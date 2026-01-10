@@ -1,0 +1,185 @@
+from flask import Flask, request, render_template, jsonify
+import torch
+import torch.nn as nn
+from torchvision import transforms
+from PIL import Image
+import joblib
+import os
+import pandas as pd
+import numpy as np
+from werkzeug.utils import secure_filename
+
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = './uploads'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# Base directory for paths
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+models_dir = os.path.join(BASE_DIR, "models")
+datasets_dir = os.path.join(BASE_DIR, "datasets")
+
+# Define model architecture
+class SimpleCNN(nn.Module):
+    def __init__(self, n_classes):
+        super(SimpleCNN, self).__init__()
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.fc1 = nn.Linear(64 * 7 * 7, 128)
+        self.fc2 = nn.Linear(128, n_classes)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = self.pool(self.relu(self.conv1(x)))
+        x = self.pool(self.relu(self.conv2(x)))
+        x = x.view(-1, 64 * 7 * 7)
+        x = self.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+# Load model
+model_path = os.path.join(models_dir, "vision_disease_model.pth")
+label_map_path = os.path.join(models_dir, "vision_label_map.joblib")
+
+label_map = joblib.load(label_map_path)
+n_classes = len(label_map)
+model = SimpleCNN(n_classes)
+model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+model.eval()
+
+# Preprocessing
+transform = transforms.Compose([
+    transforms.Resize((28, 28)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[.5, .5, .5], std=[.5, .5, .5])
+])
+
+# Label mapping for vision
+labels_pretty = {
+    "akiec": "Actinic Keratoses / Intraepithelial Carcinoma",
+    "bcc": "Basal Cell Carcinoma",
+    "bkl": "Benign Keratosis-like Lesions",
+    "df": "Dermatofibroma",
+    "mel": "Melanoma",
+    "nv": "Melanocytic Nevi",
+    "vasc": "Vascular Lesions"
+}
+
+# --- Load Symptom Prediction Model ---
+symptom_model_path = os.path.join(models_dir, "best_disease_model_rf.joblib")
+symptom_le_path = os.path.join(models_dir, "label_encoder.joblib")
+symptoms_list_path = os.path.join(models_dir, "symptoms_list.joblib")
+precaution_path = os.path.join(datasets_dir, "Disease precaution.csv")
+
+symptom_model = joblib.load(symptom_model_path)
+symptom_le = joblib.load(symptom_le_path)
+all_symptoms = joblib.load(symptoms_list_path)
+precaution_df = pd.read_csv(precaution_path)
+precaution_df['Disease'] = precaution_df['Disease'].str.strip()
+
+import re
+def clean_symptom(s):
+    if not isinstance(s, str): return None
+    s = s.strip().lower()
+    s = re.sub(r'[^a-zA-Z0-9\s_]', '', s)
+    s = s.replace(' ', '_')
+    return s
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    
+    try:
+        # Save and process image
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        # Load and transform image
+        image = Image.open(filepath).convert('RGB')
+        input_tensor = transform(image).unsqueeze(0)
+        
+        # Predict
+        with torch.no_grad():
+            output = model(input_tensor)
+            probabilities = torch.softmax(output, dim=1)
+            confidence, predicted = torch.max(probabilities, 1)
+        
+        predicted_label = label_map[predicted.item()]
+        pretty_name = labels_pretty.get(predicted_label, predicted_label)
+        
+        # Determine severity
+        is_serious = predicted_label in ["mel", "bcc", "akiec"]
+        
+        return jsonify({
+            'condition': pretty_name,
+            'confidence': f"{confidence.item() * 100:.2f}",
+            'is_serious': is_serious,
+            'code': predicted_label
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/predict_symptoms', methods=['POST'])
+def predict_symptoms():
+    data = request.json
+    user_symptoms = data.get('symptoms', [])
+    
+    if not user_symptoms:
+        return jsonify({'error': 'No symptoms provided'}), 400
+    
+    try:
+        # Prepare input vector
+        input_vector = pd.DataFrame(0, index=[0], columns=all_symptoms)
+        
+        # Clean and match symptoms
+        matched_symptoms = []
+        for s in user_symptoms:
+            s_clean = clean_symptom(s)
+            if s_clean in all_symptoms:
+                input_vector.loc[0, s_clean] = 1
+                matched_symptoms.append(s_clean)
+        
+        if not matched_symptoms:
+            return jsonify({'error': 'No matching symptoms found in database'}), 404
+        
+        # Predict
+        prediction_idx = symptom_model.predict(input_vector)[0]
+        probabilities = symptom_model.predict_proba(input_vector)[0]
+        
+        disease = symptom_le.inverse_transform([prediction_idx])[0]
+        confidence = np.max(probabilities)
+        
+        # Look up precautions
+        precautions = []
+        prec_row = precaution_df[precaution_df['Disease'] == disease]
+        if not prec_row.empty:
+            p_cols = [c for c in precaution_df.columns if 'Precaution' in c]
+            for col in p_cols:
+                p = prec_row.iloc[0][col]
+                if pd.notna(p) and str(p).strip():
+                    precautions.append(p.strip().capitalize())
+        
+        return jsonify({
+            'disease': disease,
+            'confidence': f"{confidence * 100:.2f}",
+            'precautions': precautions,
+            'matched': matched_symptoms
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5001)
