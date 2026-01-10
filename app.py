@@ -42,11 +42,57 @@ class SimpleCNN(nn.Module):
 model_path = os.path.join(models_dir, "vision_disease_model.pth")
 label_map_path = os.path.join(models_dir, "vision_label_map.joblib")
 
-label_map = joblib.load(label_map_path)
-n_classes = len(label_map)
-model = SimpleCNN(n_classes)
-model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
-model.eval()
+# Check if model files are Git LFS pointers (not actual files)
+def is_lfs_pointer(filepath):
+    """Check if file is a Git LFS pointer instead of actual content"""
+    try:
+        with open(filepath, 'rb') as f:
+            header = f.read(50)
+            return b'version https://git-lfs' in header
+    except:
+        return False
+
+def check_model_files():
+    """Validate all model files are properly downloaded"""
+    model_files = [
+        model_path, 
+        label_map_path,
+        os.path.join(models_dir, "best_disease_model_rf.joblib"),
+        os.path.join(models_dir, "label_encoder.joblib"),
+        os.path.join(models_dir, "symptoms_list.joblib")
+    ]
+    for mf in model_files:
+        if not os.path.exists(mf):
+            raise FileNotFoundError(f"Model file not found: {mf}")
+        if is_lfs_pointer(mf):
+            raise ValueError(f"Git LFS file not downloaded properly: {mf}. "
+                           f"Run 'git lfs pull' to download model files.")
+        # Check file size (LFS pointers are ~130 bytes)
+        if os.path.getsize(mf) < 1000:
+            raise ValueError(f"Model file too small (likely LFS pointer): {mf}")
+
+# Validate models on startup
+try:
+    check_model_files()
+    print("✓ All model files validated successfully")
+except Exception as e:
+    print(f"⚠ Model validation error: {e}")
+    print("Starting in limited mode - some features may not work")
+
+# Try to load models with error handling
+try:
+    label_map = joblib.load(label_map_path)
+    n_classes = len(label_map)
+    model = SimpleCNN(n_classes)
+    model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu'), weights_only=True))
+    model.eval()
+    vision_model_loaded = True
+    print("✓ Vision model loaded successfully")
+except Exception as e:
+    print(f"⚠ Vision model failed to load: {e}")
+    vision_model_loaded = False
+    model = None
+    label_map = {}
 
 # Preprocessing
 transform = transforms.Compose([
@@ -72,11 +118,21 @@ symptom_le_path = os.path.join(models_dir, "label_encoder.joblib")
 symptoms_list_path = os.path.join(models_dir, "symptoms_list.joblib")
 precaution_path = os.path.join(datasets_dir, "Disease precaution.csv")
 
-symptom_model = joblib.load(symptom_model_path)
-symptom_le = joblib.load(symptom_le_path)
-all_symptoms = joblib.load(symptoms_list_path)
-precaution_df = pd.read_csv(precaution_path)
-precaution_df['Disease'] = precaution_df['Disease'].str.strip()
+try:
+    symptom_model = joblib.load(symptom_model_path)
+    symptom_le = joblib.load(symptom_le_path)
+    all_symptoms = joblib.load(symptoms_list_path)
+    precaution_df = pd.read_csv(precaution_path)
+    precaution_df['Disease'] = precaution_df['Disease'].str.strip()
+    symptom_model_loaded = True
+    print("✓ Symptom model loaded successfully")
+except Exception as e:
+    print(f"⚠ Symptom model failed to load: {e}")
+    symptom_model_loaded = False
+    symptom_model = None
+    symptom_le = None
+    all_symptoms = []
+    precaution_df = pd.DataFrame()
 
 import re
 def clean_symptom(s):
