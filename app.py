@@ -148,6 +148,10 @@ def index():
 
 @app.route('/predict', methods=['POST'])
 def predict():
+    # Check if vision model is available
+    if not vision_model_loaded or model is None:
+        return jsonify({'error': 'Vision model not available. The model files may not have loaded correctly.'}), 503
+    
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
     
@@ -189,6 +193,10 @@ def predict():
 
 @app.route('/predict_symptoms', methods=['POST'])
 def predict_symptoms():
+    # Check if symptom model is available
+    if not symptom_model_loaded or symptom_model is None:
+        return jsonify({'error': 'Symptom model not available. The model files may not have loaded correctly.'}), 503
+    
     data = request.json
     user_symptoms = data.get('symptoms', [])
     
