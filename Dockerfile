@@ -2,13 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies including git-lfs
+# Install system dependencies including curl for downloads
 RUN apt-get update && apt-get install -y \
     build-essential \
-    git \
-    git-lfs \
-    && rm -rf /var/lib/apt/lists/* \
-    && git lfs install
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for caching
 COPY requirements.txt .
@@ -16,11 +14,21 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application
+# Copy the rest of the application (excluding models which are LFS pointers)
 COPY . .
 
-# Pull Git LFS files (model files)
-RUN git lfs pull || echo "LFS pull skipped (not a git repo)"
+# Download actual model files from Hugging Face LFS
+RUN mkdir -p models && \
+    curl -L -o models/best_disease_model_rf.joblib \
+    "https://huggingface.co/spaces/mdark4025/MediScan-AI/resolve/main/models/best_disease_model_rf.joblib?download=true" && \
+    curl -L -o models/label_encoder.joblib \
+    "https://huggingface.co/spaces/mdark4025/MediScan-AI/resolve/main/models/label_encoder.joblib?download=true" && \
+    curl -L -o models/symptoms_list.joblib \
+    "https://huggingface.co/spaces/mdark4025/MediScan-AI/resolve/main/models/symptoms_list.joblib?download=true" && \
+    curl -L -o models/vision_disease_model.pth \
+    "https://huggingface.co/spaces/mdark4025/MediScan-AI/resolve/main/models/vision_disease_model.pth?download=true" && \
+    curl -L -o models/vision_label_map.joblib \
+    "https://huggingface.co/spaces/mdark4025/MediScan-AI/resolve/main/models/vision_label_map.joblib?download=true"
 
 # Create uploads directory
 RUN mkdir -p uploads
