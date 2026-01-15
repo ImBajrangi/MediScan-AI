@@ -260,7 +260,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3)
 
 # Training with history
-epochs = 10
+epochs = 25
 train_losses = []
 train_accuracies = []
 val_accuracies = []
