@@ -66,7 +66,7 @@ class TemperatureScaledModel(nn.Module):
         return logits / self.temperature
 
 # Load models
-model_path = os.path.join(models_dir, "best_vision_model.pth")
+model_path = os.path.join(models_dir, "vision_disease_model.pth")
 label_map_path = os.path.join(models_dir, "vision_label_map.joblib")
 
 # Check if model files are Git LFS pointers (not actual files)
