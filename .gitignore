@@ -22,6 +22,7 @@ wheels/
 
 # Virtual Environment
 venv/
+.venv/
 env/
 ENV/
 
@@ -39,9 +40,17 @@ Thumbs.db
 uploads/
 *.pdf
 
-# Large model files (optional - uncomment if you want to exclude)
-# models/*.joblib
-# models/*.pth
+# Training scripts (not needed for deployment)
+train_*.py
+download_*.py
+merge_datasets.py
+evaluate_models.py
+
+# Datasets (not needed for deployment - too large)
+datasets/
+
+# Evaluation results
+evaluation_results/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -49,4 +58,8 @@ uploads/
 
 # Logs
 *.log
-evaluation_results/
+
+# Old/backup models (keep only essential)
+models/best_vision_model.pth
+models/enhanced_disease_model.joblib
+models/.DS_Store
