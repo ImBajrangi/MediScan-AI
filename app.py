@@ -342,8 +342,8 @@ def predict():
         # 3. Final confidence with floor
         final_confidence = min(0.95, max(sigmoid_conf, scaled_conf * 1.3))
         
-        # Apply minimum floor of 65% for any valid prediction
-        final_confidence = max(final_confidence, 0.65)
+        # Apply minimum floor of 75% for any valid prediction
+        final_confidence = max(final_confidence, 0.75)
         
         # Determine severity
         is_serious = predicted_label in ["mel", "bcc", "akiec", "Melanoma Skin Cancer Nevi and Moles", 
@@ -421,9 +421,8 @@ def predict_symptoms():
         # Final confidence (blend of scaled and sigmoid, capped at 95%)
         final_confidence = min(0.95, max(sigmoid_conf, scaled_conf * 1.2))
         
-        # Minimum floor based on match count (never below this)
-        min_floor = min(0.5 + (num_matched * 0.08), 0.75)  # 50% to 75% floor
-        final_confidence = max(final_confidence, min_floor)
+        # Minimum floor: GUARANTEED 75%+ for all predictions
+        final_confidence = max(final_confidence, 0.75)
         
         # Look up precautions
         precautions = []
