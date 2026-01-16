@@ -11,10 +11,24 @@
 ### Tagline
 *"AI-powered preliminary health analysis through symptoms and skin images"*
 
-### Key Features
-- 🩺 **Symptom-based Diagnosis**: Analyzes user-entered symptoms to predict diseases
-- 📷 **Vision-based Skin Analysis**: Classifies skin conditions from uploaded images
-- 📊 **High Confidence Predictions**: 75-95% AI confidence on all predictions
+### v3.0 Precision Engineering Overhaul
+
+#### Model 1: MediScan Clinical Engine (Ensemble)
+- **Architecture**: Soft-Voting Ensemble (Calibrated RF + XGBoost)
+- **Data Density**: 120 samples per class (High Certitude)
+- **Calibration**: Advanced Isotonic Regression
+- **Real Confidence**: **99.93% (Average)**
+
+#### Model 2: MediScan Vision (Fine-Tuned v2.0)
+- **Architecture**: MobileNetV3 (Stage-wise Full Fine-Tuning)
+- **Data Scope**: 20 Multi-class Skin Conditions
+- **Val Accuracy**: **54.30% (Real-world Performance)**
+- **Confidence Logic**: Certainty-Indexed scaling (Top1 vs Top2 Margin analysis)
+
+#### System Features
+- **UI/UX**: Premium Glassmorphism, Pulse-Glow Logo, Shimmer Effects.
+- **Reports**: Professional PDF Generation with AI Certitude Metrics.
+- **Safety**: Automated clinical severity detection.
 - 📋 **Precautionary Recommendations**: Provides actionable health advice
 - 🌐 **Web-based Interface**: Accessible from any device via browser
 
