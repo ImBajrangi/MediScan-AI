@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, jsonify
 import torch
 import torch.nn as nn
-from torchvision import transforms
+from torchvision import transforms, models
 from PIL import Image
 import joblib
 import os
@@ -19,7 +19,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 models_dir = os.path.join(BASE_DIR, "models")
 datasets_dir = os.path.join(BASE_DIR, "datasets")
 
-# Define Enhanced Model Architectures
+# Define Enhanced Model Architectures (legacy CNN for backward compat)
 class EnhancedCNN(nn.Module):
     def __init__(self, n_classes):
         super(EnhancedCNN, self).__init__()
@@ -65,9 +65,14 @@ class TemperatureScaledModel(nn.Module):
         logits = self.model(x)
         return logits / self.temperature
 
-# Load models
+# Check for enhanced model first, then fallback to original
+enhanced_model_path = os.path.join(models_dir, "vision_disease_model_enhanced.pth")
+enhanced_label_path = os.path.join(models_dir, "vision_label_map_enhanced.joblib")
 model_path = os.path.join(models_dir, "vision_disease_model.pth")
 label_map_path = os.path.join(models_dir, "vision_label_map.joblib")
+
+# Determine which vision model to use
+use_enhanced_vision = os.path.exists(enhanced_model_path) and os.path.exists(enhanced_label_path)
 
 # Check if model files are Git LFS pointers (not actual files)
 def is_lfs_pointer(filepath):
@@ -100,46 +105,72 @@ def check_model_files():
 
 # Try to load models with error handling
 try:
-    label_map = joblib.load(label_map_path)
-    n_classes = len(label_map)
-    base_model = EnhancedCNN(n_classes)
-    
-    # Check which vision model file to use
-    v_path = model_path if os.path.exists(model_path) else os.path.join(models_dir, "vision_disease_model.pth")
-    
-    checkpoint = torch.load(v_path, map_location=torch.device('cpu'), weights_only=False)
-    
-    # Handle both full state_dict and just weights
-    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-        base_model.load_state_dict(checkpoint['model_state_dict'])
-        temp = checkpoint.get('temperature', 1.5)
-        model = TemperatureScaledModel(base_model, temperature=temp)
+    if use_enhanced_vision:
+        # Load enhanced MobileNetV3 model (20 classes)
+        print("🔥 Loading ENHANCED vision model (MobileNetV3, 20 classes)...")
+        label_map = joblib.load(enhanced_label_path)
+        n_classes = len(label_map)
+        
+        # Build MobileNetV3-Small architecture
+        base_model = models.mobilenet_v3_small(weights=None)
+        num_ftrs = base_model.classifier[3].in_features
+        base_model.classifier[3] = nn.Linear(num_ftrs, n_classes)
+        
+        # Wrap with temperature scaling
+        vision_model = TemperatureScaledModel(base_model)
+        
+        # Load weights
+        checkpoint = torch.load(enhanced_model_path, map_location=torch.device('cpu'), weights_only=False)
+        vision_model.load_state_dict(checkpoint)
+        vision_model.eval()
+        model = vision_model
+        
+        # Enhanced transform (ImageNet standard - 224x224)
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        vision_model_loaded = True
+        print(f"✓ Enhanced Vision model loaded: {n_classes} classes")
     else:
-        # Fallback for simple state_dict
-        try:
+        # Legacy model loading
+        label_map = joblib.load(label_map_path)
+        n_classes = len(label_map)
+        base_model = EnhancedCNN(n_classes)
+        
+        v_path = model_path if os.path.exists(model_path) else os.path.join(models_dir, "vision_disease_model.pth")
+        checkpoint = torch.load(v_path, map_location=torch.device('cpu'), weights_only=False)
+        
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            base_model.load_state_dict(checkpoint['model_state_dict'])
+            temp = checkpoint.get('temperature', 1.5)
+            model = TemperatureScaledModel(base_model, temperature=temp)
+        else:
             base_model.load_state_dict(checkpoint)
             model = TemperatureScaledModel(base_model)
-        except:
-            # If architecture mismatch (old model), try loading as SimpleCNN
-            from train_vision_model import SimpleCNN # If available
-            # For now, we assume the user is using the new one
-            raise
-            
-    model.eval()
-    vision_model_loaded = True
-    print("✓ Vision model loaded successfully")
+                
+        model.eval()
+        vision_model_loaded = True
+        
+        # Legacy transform (28x28)
+        transform = transforms.Compose([
+            transforms.Resize((28, 28)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[.5, .5, .5], std=[.5, .5, .5])
+        ])
+        print("✓ Legacy Vision model loaded successfully")
 except Exception as e:
     print(f"⚠ Vision model failed to load: {e}")
     vision_model_loaded = False
     model = None
     label_map = {}
-
-# Preprocessing
-transform = transforms.Compose([
-    transforms.Resize((28, 28)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[.5, .5, .5], std=[.5, .5, .5])
-])
+    # Default fallback transform
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
 
 # Label mapping for vision
 labels_pretty = {
@@ -152,8 +183,9 @@ labels_pretty = {
     "vasc": "Vascular Lesions"
 }
 
-# --- Load Symptom Prediction Model (Ensemble) ---
-symptom_model_path = os.path.join(models_dir, "enhanced_disease_model.joblib")
+# --- Load Symptom Prediction Model (Calibrated RF - better confidence) ---
+# Using calibrated_rf_model.joblib instead of ensemble for better confidence scores
+symptom_model_path = os.path.join(models_dir, "calibrated_rf_model.joblib")
 symptom_le_path = os.path.join(models_dir, "label_encoder.joblib")
 symptoms_list_path = os.path.join(models_dir, "symptoms_list.joblib")
 precaution_path = os.path.join(datasets_dir, "Disease precaution.csv")
@@ -165,7 +197,7 @@ try:
     precaution_df = pd.read_csv(precaution_path)
     precaution_df['Disease'] = precaution_df['Disease'].str.strip()
     symptom_model_loaded = True
-    print("✓ Enhanced Symptom model loaded successfully")
+    print("✓ Calibrated RF Symptom model loaded successfully")
 except Exception as e:
     print(f"⚠ Symptom model failed to load: {e}")
     symptom_model_loaded = False
@@ -175,12 +207,82 @@ except Exception as e:
     precaution_df = pd.DataFrame()
 
 import re
+
+# Symptom synonyms - maps common user input to actual symptom names in the model
+SYMPTOM_SYNONYMS = {
+    # Pain variations
+    'body_aches': 'muscle_pain',
+    'muscle_aches': 'muscle_pain',
+    'body_pain': 'muscle_pain',
+    'aches': 'muscle_pain',
+    'aching': 'muscle_pain',
+    'sore_muscles': 'muscle_pain',
+    'stomachache': 'stomach_pain',
+    'stomach_ache': 'stomach_pain',
+    'tummy_ache': 'stomach_pain',
+    'tummy_pain': 'belly_pain',
+    'fever': 'high_fever',
+    'temperature': 'high_fever',
+    'feeling_hot': 'high_fever',
+    'runny_eyes': 'watering_from_eyes',
+    'teary_eyes': 'watering_from_eyes',
+    'throwing_up': 'vomiting',
+    'puking': 'vomiting',
+    'dizzy': 'dizziness',
+    'light_headed': 'dizziness',
+    'lightheaded': 'dizziness',
+    'tired': 'fatigue',
+    'tiredness': 'fatigue',
+    'exhaustion': 'fatigue',
+    'exhausted': 'fatigue',
+    'weak': 'weakness_in_limbs',
+    'weakness': 'weakness_in_limbs',
+    'no_appetite': 'loss_of_appetite',
+    'not_hungry': 'loss_of_appetite',
+    'cant_eat': 'loss_of_appetite',
+    'skin_itching': 'itching',
+    'itchy': 'itching',
+    'itchy_skin': 'itching',
+    'scratchy': 'itching',
+    'rash': 'skin_rash',
+    'difficulty_breathing': 'breathlessness',
+    'short_of_breath': 'breathlessness',
+    'trouble_breathing': 'breathlessness',
+    'hard_to_breathe': 'breathlessness',
+    'sneezing': 'continuous_sneezing',
+    'coughing': 'cough',
+    'cold': 'runny_nose',
+    'common_cold': 'runny_nose',
+    'stuffy_nose': 'congestion',
+    'blocked_nose': 'congestion',
+    'loose_motion': 'diarrhoea',
+    'loose_motions': 'diarrhoea',
+    'diarrhea': 'diarrhoea',
+    'constipated': 'constipation',
+    'yellow_skin': 'yellowish_skin',
+    'yellow_eyes': 'yellowing_of_eyes',
+    'sore_throat': 'throat_irritation',
+    'throat_pain': 'throat_irritation',
+    'stiff_joints': 'swelling_joints',
+    'swollen_joints': 'swelling_joints',
+    'pee_frequently': 'polyuria',
+    'frequent_urination': 'polyuria',
+    'peeing_a_lot': 'polyuria',
+    'heart_racing': 'fast_heart_rate',
+    'rapid_heartbeat': 'fast_heart_rate',
+    'pounding_heart': 'palpitations',
+}
+
 def clean_symptom(s):
     if not isinstance(s, str): return None
     s = s.strip().lower()
     s = re.sub(r'[^a-zA-Z0-9\s_]', '', s)
     s = s.replace(' ', '_')
+    # Check for synonyms/aliases
+    if s in SYMPTOM_SYNONYMS:
+        s = SYMPTOM_SYNONYMS[s]
     return s
+
 
 @app.route('/')
 def index():
