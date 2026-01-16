@@ -132,7 +132,7 @@ symptomSearchBtn.addEventListener('click', async () => {
             body: JSON.stringify({ symptoms: currentSymptoms })
         });
         const data = await res.json();
-        if (res.ok) showResults(data, 'Symptom-based ML (Random Forest)');
+        if (res.ok) showResults(data, data.model_info || 'Symptom-based ML (Random Forest)');
         else alert(data.error);
     } catch (e) { alert(e.message); }
     finally { hideLoading(symptomSearchBtn, 'Analyze Symptoms'); }
@@ -152,7 +152,7 @@ analyzeBtn.addEventListener('click', async () => {
             body: formData
         });
         const data = await res.json();
-        if (res.ok) showResults(data, 'Pictorial AI (DermaMNIST CNN)');
+        if (res.ok) showResults(data, data.model_info || 'Pictorial AI (DermaMNIST CNN)');
         else alert(data.error);
     } catch (e) { alert(e.message); }
     finally { hideLoading(analyzeBtn, 'Start Visual Analysis'); }
