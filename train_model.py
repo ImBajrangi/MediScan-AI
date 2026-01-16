@@ -1,12 +1,14 @@
 """
 MediScan AI - Enhanced Disease Prediction Model Training
 Features: Hyperparameter tuning, Probability Calibration, Ensemble Voting
+Supports: Merged datasets for expanded disease coverage
 """
 
 import pandas as pd
 import numpy as np
 import os
-from sklearn.model_selection import train_test_split, cross_val_score
+import time
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.preprocessing import LabelEncoder
@@ -20,37 +22,130 @@ print("=" * 60)
 print("MediScan AI - Enhanced Symptom-Based Model Training")
 print("=" * 60)
 
-# Load the dataset
-data_path = "./datasets/DiseaseAndSymptoms.csv"
+# Dataset paths (prioritize merged dataset if available)
+merged_path = "./datasets/merged_disease_symptoms.csv"
+original_path = "./datasets/DiseaseAndSymptoms.csv"
+
+# Choose dataset based on availability
+if os.path.exists(merged_path):
+    data_path = merged_path
+    print(f"\n📂 Using MERGED dataset (expanded coverage)")
+    is_merged = True
+else:
+    data_path = original_path
+    print(f"\n📂 Using original dataset")
+    print("   💡 Tip: Run 'python merge_datasets.py' for expanded dataset")
+    is_merged = False
+
 data = pd.read_csv(data_path)
+print(f"   Loaded: {data_path}")
 
-# 1. Preprocessing
-cols = data.columns[1:]
-for col in cols:
-    data[col] = data[col].str.strip()
+# Process based on dataset format
+if is_merged:
+    # Merged dataset is already in binary matrix format
+    # Disease column + binary symptom columns
+    disease_col = 'Disease'
+    symptom_cols = [col for col in data.columns if col != disease_col]
+    all_symptoms = sorted(symptom_cols)
+    
+    # X is already binary
+    X = data[symptom_cols].astype(int)
+    
+    # Encode labels (y)
+    le = LabelEncoder()
+    y = le.fit_transform(data[disease_col])
+else:
+    # Original format: Disease + Symptom_1, Symptom_2, etc.
+    cols = data.columns[1:]
+    for col in cols:
+        data[col] = data[col].str.strip()
+    
+    # Get unique symptoms and filter out NaN
+    raw_symptoms = data[cols].values.ravel('K')
+    all_symptoms = sorted(list(set([s for s in raw_symptoms if isinstance(s, str)])))
+    
+    # Create binary matrix (X)
+    X = pd.DataFrame(0, index=np.arange(len(data)), columns=all_symptoms)
+    for i in range(len(data)):
+        row_symptoms = data.iloc[i, 1:].dropna().values
+        X.loc[i, row_symptoms] = 1
+    
+    # Encode labels (y)
+    le = LabelEncoder()
+    y = le.fit_transform(data['Disease'])
 
-# Get unique symptoms and filter out NaN
-raw_symptoms = data[cols].values.ravel('K')
-all_symptoms = sorted(list(set([s for s in raw_symptoms if isinstance(s, str)])))
+# ============================================================================
+# SMOTE OVERSAMPLING FOR MINORITY CLASSES
+# ============================================================================
+from collections import Counter
+from imblearn.over_sampling import SMOTE, RandomOverSampler
 
-# Create binary matrix (X)
-X = pd.DataFrame(0, index=np.arange(len(data)), columns=all_symptoms)
-for i in range(len(data)):
-    row_symptoms = data.iloc[i, 1:].dropna().values
-    X.loc[i, row_symptoms] = 1
+print("\n🔄 Applying SMOTE oversampling for minority classes...")
 
-# Encode labels (y)
-le = LabelEncoder()
-y = le.fit_transform(data['Disease'])
+# Check class distribution
+class_counts = Counter(y)
+min_samples = min(class_counts.values())
+print(f"   Min samples per class: {min_samples}")
+print(f"   Total classes: {len(class_counts)}")
 
-# Split data
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# Calculate target samples per class (minimum 6 for stratified k-fold)
+target_samples = max(6, int(np.median(list(class_counts.values()))))
+print(f"   Target samples per class: {target_samples}")
+
+# Create sampling strategy
+sampling_strategy = {}
+for cls, count in class_counts.items():
+    if count < target_samples:
+        sampling_strategy[cls] = target_samples
+
+if sampling_strategy:
+    try:
+        # Try SMOTE first (needs at least k_neighbors + 1 samples)
+        min_for_smote = min(class_counts.values())
+        k_neighbors = min(5, min_for_smote - 1) if min_for_smote > 1 else 1
+        
+        if k_neighbors >= 1 and min_for_smote > 1:
+            smote = SMOTE(
+                sampling_strategy=sampling_strategy,
+                k_neighbors=k_neighbors,
+                random_state=42
+            )
+            X_resampled, y_resampled = smote.fit_resample(X, y)
+            print(f"   ✓ SMOTE applied successfully")
+        else:
+            # Fallback to random oversampling for very small classes
+            ros = RandomOverSampler(sampling_strategy=sampling_strategy, random_state=42)
+            X_resampled, y_resampled = ros.fit_resample(X, y)
+            print(f"   ✓ Random oversampling applied (some classes too small for SMOTE)")
+        
+        X = pd.DataFrame(X_resampled, columns=all_symptoms)
+        y = np.array(y_resampled)
+        print(f"   ✓ Dataset size: {len(y)} samples (was {sum(class_counts.values())})")
+    except Exception as e:
+        print(f"   ⚠️ Oversampling failed: {e}")
+        print(f"   Using original data without oversampling")
+
+# Verify all classes still exist
+final_class_counts = Counter(y)
+print(f"   Final classes: {len(final_class_counts)}")
+
+# Perform stratified split
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
 
 print(f"\n📊 Dataset Statistics:")
-print(f"   Total Samples: {len(data)}")
+print(f"   Total Samples: {len(X)}")
 print(f"   Features (Symptoms): {len(all_symptoms)}")
-print(f"   Classes (Diseases): {len(le.classes_)}")
+print(f"   Classes (Diseases): {len(np.unique(y))}")
 print(f"   Train Size: {len(X_train)}, Test Size: {len(X_test)}")
+print(f"   Split Method: stratified")
+
+# Large dataset mode - adjust parameters
+large_dataset = len(X) > 10000
+if large_dataset:
+    print(f"\n⚡ Large dataset detected - using optimized parameters")
+    print(f"   Estimated training time: 10-30 minutes")
 
 # ============================================================================
 # ENHANCED RANDOM FOREST
@@ -120,7 +215,7 @@ calibrated_rf = CalibratedClassifierCV(
         n_jobs=-1
     ),
     method='isotonic',
-    cv=3
+    cv=2  # Use 2-fold for datasets with some classes having only 2 samples
 )
 calibrated_rf.fit(X_train, y_train)
 y_pred_cal_rf = calibrated_rf.predict(X_test)
@@ -139,7 +234,7 @@ calibrated_xgb = CalibratedClassifierCV(
         eval_metric='mlogloss'
     ),
     method='isotonic',
-    cv=3
+    cv=2  # Use 2-fold for datasets with some classes having only 2 samples
 )
 calibrated_xgb.fit(X_train, y_train)
 y_pred_cal_xgb = calibrated_xgb.predict(X_test)
@@ -147,47 +242,33 @@ cal_xgb_accuracy = accuracy_score(y_test, y_pred_cal_xgb)
 print(f"   ✓ Calibrated XGBoost Accuracy: {cal_xgb_accuracy * 100:.2f}%")
 
 # ============================================================================
-# ENSEMBLE WITH SOFT VOTING
+# FINAL ROBUST ENSEMBLE (MAX ACCURACY/CONFIDENCE)
 # ============================================================================
-print("\n" + "-" * 50)
-print("🔗 Creating Ensemble with Soft Voting...")
-print("-" * 50)
+print("\n" + "="*50)
+print("🔗 Creating MediScan Clinical Engine v2.0 (Voting)...")
+print("="*50)
 
-# Create fresh models for ensemble
-rf_for_ensemble = RandomForestClassifier(
-    n_estimators=400,
-    max_depth=22,
-    min_samples_split=4,
-    class_weight='balanced',
-    random_state=42,
-    n_jobs=-1
-)
+from sklearn.ensemble import VotingClassifier
 
-xgb_for_ensemble = xgb.XGBClassifier(
-    n_estimators=250,
-    max_depth=14,
-    learning_rate=0.1,
-    subsample=0.85,
-    random_state=42,
-    use_label_encoder=False,
-    eval_metric='mlogloss'
-)
-
+# Using soft voting on calibrated models preserves the real high confidence
+# while maximizing ensemble accuracy.
 ensemble = VotingClassifier(
     estimators=[
-        ('rf', rf_for_ensemble),
-        ('xgb', xgb_for_ensemble)
+        ('rf', calibrated_rf),
+        ('xgb', calibrated_xgb)
     ],
-    voting='soft',  # Use probability averaging for better confidence
-    weights=[1.2, 1.0]  # Slightly favor RF if it performs better
+    voting='soft',
+    weights=[1.1, 0.9] # Slightly favor Random Forest stability
 )
 
 ensemble.fit(X_train, y_train)
-y_pred_ensemble = ensemble.predict(X_test)
-ensemble_accuracy = accuracy_score(y_test, y_pred_ensemble)
-print(f"   ✓ Ensemble Accuracy: {ensemble_accuracy * 100:.2f}%")
+y_pred_ens = ensemble.predict(X_test)
+ens_accuracy = accuracy_score(y_test, y_pred_ens)
+probs_ens = ensemble.predict_proba(X_test)
+avg_conf = np.mean(np.max(probs_ens, axis=1))
 
-# Test confidence scores
+print(f"   ✓ Ensemble Accuracy: {ens_accuracy * 100:.2f}%")
+print(f"   ✓ Average Prediction Confidence: {avg_conf * 100:.2f}%")
 y_proba = ensemble.predict_proba(X_test)
 avg_confidence = np.max(y_proba, axis=1).mean()
 print(f"   ✓ Average Prediction Confidence: {avg_confidence * 100:.2f}%")
@@ -208,7 +289,7 @@ model_scores = {
     'XGBoost': xgb_accuracy,
     'Calibrated RF': cal_rf_accuracy,
     'Calibrated XGBoost': cal_xgb_accuracy,
-    'Ensemble': ensemble_accuracy
+    'Ensemble': ens_accuracy
 }
 
 best_model_name = max(model_scores, key=model_scores.get)
