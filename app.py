@@ -222,6 +222,7 @@ SYMPTOM_SYNONYMS = {
     'tummy_ache': 'stomach_pain',
     'tummy_pain': 'belly_pain',
     'fever': 'high_fever',
+    'feverish': 'high_fever',
     'temperature': 'high_fever',
     'feeling_hot': 'high_fever',
     'runny_eyes': 'watering_from_eyes',
@@ -245,6 +246,12 @@ SYMPTOM_SYNONYMS = {
     'itchy_skin': 'itching',
     'scratchy': 'itching',
     'rash': 'skin_rash',
+    'rashes': 'skin_rash',
+    'skin_rashes': 'skin_rash',
+    'eruption': 'nodal_skin_eruptions',
+    'eruptions': 'nodal_skin_eruptions',
+    'spots': 'red_spots_over_body',
+    'red_spots': 'red_spots_over_body',
     'difficulty_breathing': 'breathlessness',
     'short_of_breath': 'breathlessness',
     'trouble_breathing': 'breathlessness',
@@ -257,6 +264,7 @@ SYMPTOM_SYNONYMS = {
     'blocked_nose': 'congestion',
     'loose_motion': 'diarrhoea',
     'loose_motions': 'diarrhoea',
+    'running_stomach': 'diarrhoea',
     'diarrhea': 'diarrhoea',
     'constipated': 'constipation',
     'yellow_skin': 'yellowish_skin',
@@ -380,12 +388,47 @@ def predict_symptoms():
         matched_symptoms = []
         for s in user_symptoms:
             s_clean = clean_symptom(s)
+            
+            # 1. Direct match (e.g. "itching" -> "itching")
             if s_clean in all_symptoms:
                 input_vector.loc[0, s_clean] = 1
                 matched_symptoms.append(s_clean)
+                continue
+            
+            # 2. Synonym match (e.g. "rashes" -> "skin_rash")
+            mapped = SYMPTOM_SYNONYMS.get(s_clean)
+            if not mapped and s_clean.endswith('s'):
+                # Try singular form
+                mapped = SYMPTOM_SYNONYMS.get(s_clean[:-1])
+            
+            if mapped and mapped in all_symptoms:
+                input_vector.loc[0, mapped] = 1
+                matched_symptoms.append(mapped)
+                continue
+                
+            # 3. Keyword / Substring match (e.g. "rash" -> "skin_rash")
+            best_match = None
+            
+            # Simple word stripping for plurals if not in synonyms
+            s_singular = s_clean[:-1] if s_clean.endswith('s') else s_clean
+            
+            for clinical_s in all_symptoms:
+                # Check if user input is part of clinical term OR vice versa
+                if (s_clean in clinical_s or clinical_s in s_clean or 
+                    s_singular in clinical_s or clinical_s in s_singular):
+                    best_match = clinical_s
+                    break
+            
+            if best_match:
+                input_vector.loc[0, best_match] = 1
+                matched_symptoms.append(best_match)
         
         if not matched_symptoms:
-            return jsonify({'error': 'No matching symptoms found in database'}), 404
+            return jsonify({
+                'error': 'No matching symptoms found in database',
+                'suggestion': 'Try using simpler terms like "rash", "fever", or "pain"',
+                'entered': user_symptoms
+            }), 404
         
         # Predict
         prediction_idx = symptom_model.predict(input_vector)[0]
