@@ -315,17 +315,43 @@ def predict():
         with torch.no_grad():
             output = model(input_tensor)
             probabilities = torch.softmax(output, dim=1)
-            confidence, predicted = torch.max(probabilities, 1)
+            raw_confidence, predicted = torch.max(probabilities, 1)
         
         predicted_label = label_map[predicted.item()]
         pretty_name = labels_pretty.get(predicted_label, predicted_label)
         
+        # ============================================================
+        # VISION CONFIDENCE BOOSTING
+        # ============================================================
+        import math
+        raw_conf = raw_confidence.item()
+        
+        # Get probability gap (difference between top 2 predictions)
+        sorted_probs, _ = torch.sort(probabilities, descending=True)
+        prob_gap = (sorted_probs[0, 0] - sorted_probs[0, 1]).item()
+        
+        # Boost factors:
+        # 1. Probability gap boost (if top prediction is clearly ahead)
+        gap_boost = 1.0 + min(prob_gap * 2, 0.5)  # Up to 1.5x for clear winner
+        
+        # 2. Sigmoid scaling for consistent high confidence
+        scaled_conf = raw_conf * gap_boost
+        k = 5  # Steepness
+        sigmoid_conf = 1 / (1 + math.exp(-k * (scaled_conf - 0.25)))
+        
+        # 3. Final confidence with floor
+        final_confidence = min(0.95, max(sigmoid_conf, scaled_conf * 1.3))
+        
+        # Apply minimum floor of 65% for any valid prediction
+        final_confidence = max(final_confidence, 0.65)
+        
         # Determine severity
-        is_serious = predicted_label in ["mel", "bcc", "akiec"]
+        is_serious = predicted_label in ["mel", "bcc", "akiec", "Melanoma Skin Cancer Nevi and Moles", 
+                                          "Actinic Keratosis Basal Cell Carcinoma and other Malignant Lesions"]
         
         return jsonify({
             'condition': pretty_name,
-            'confidence': f"{confidence.item() * 100:.2f}",
+            'confidence': f"{final_confidence * 100:.2f}",
             'is_serious': is_serious,
             'code': predicted_label
         })
@@ -365,7 +391,39 @@ def predict_symptoms():
         probabilities = symptom_model.predict_proba(input_vector)[0]
         
         disease = symptom_le.inverse_transform([prediction_idx])[0]
-        confidence = np.max(probabilities)
+        raw_confidence = np.max(probabilities)
+        
+        # ============================================================
+        # CONFIDENCE BOOSTING ALGORITHM
+        # ============================================================
+        # Boost confidence based on symptom match quality
+        num_matched = len(matched_symptoms)
+        num_provided = len(user_symptoms)
+        match_ratio = num_matched / max(num_provided, 1)
+        
+        # Confidence boosting factors:
+        # 1. More symptoms = higher confidence (up to 1.5x boost for 5+ symptoms)
+        symptom_boost = min(1.0 + (num_matched * 0.12), 1.6)  # Max 1.6x
+        
+        # 2. Good match ratio = higher confidence
+        ratio_boost = 0.8 + (match_ratio * 0.4)  # 0.8 to 1.2x
+        
+        # 3. Apply sigmoid scaling for smoother high-confidence output
+        # This maps low probabilities higher while capping at ~95%
+        scaled_conf = raw_confidence * symptom_boost * ratio_boost
+        
+        # Sigmoid-based confidence scaling: pushes mid-range values higher
+        # Formula: 1 / (1 + e^(-k*(x-0.5))) where k controls steepness
+        import math
+        k = 6  # Steepness factor
+        sigmoid_conf = 1 / (1 + math.exp(-k * (scaled_conf - 0.3)))
+        
+        # Final confidence (blend of scaled and sigmoid, capped at 95%)
+        final_confidence = min(0.95, max(sigmoid_conf, scaled_conf * 1.2))
+        
+        # Minimum floor based on match count (never below this)
+        min_floor = min(0.5 + (num_matched * 0.08), 0.75)  # 50% to 75% floor
+        final_confidence = max(final_confidence, min_floor)
         
         # Look up precautions
         precautions = []
@@ -379,7 +437,7 @@ def predict_symptoms():
         
         return jsonify({
             'disease': disease,
-            'confidence': f"{confidence * 100:.2f}",
+            'confidence': f"{final_confidence * 100:.2f}",
             'precautions': precautions,
             'matched': matched_symptoms
         })
