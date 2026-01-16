@@ -65,6 +65,12 @@ header {
     padding: 0.75rem;
     border-radius: 1rem;
     box-shadow: 0 0 20px var(--primary-glow);
+    animation: pulseGlow 3s infinite ease-in-out;
+}
+
+@keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 20px var(--primary-glow); transform: scale(1); }
+    50% { box-shadow: 0 0 40px var(--primary-glow); transform: scale(1.05); }
 }
 
 .logo-icon svg {
@@ -221,6 +227,25 @@ button:disabled {
 .export-btn {
     background: linear-gradient(135deg, #0ea5e9, #6366f1);
     flex: 2;
+    position: relative;
+    overflow: hidden;
+}
+
+.export-btn::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent);
+    transform: rotate(45deg);
+    animation: shimmer 4s infinite linear;
+}
+
+@keyframes shimmer {
+    0% { transform: translate(-100%, -100%) rotate(45deg); }
+    100% { transform: translate(100%, 100%) rotate(45deg); }
 }
 
 .analyze-btn {
