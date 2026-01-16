@@ -1,3 +1,11 @@
+import warnings
+try:
+    from sklearn.exceptions import InconsistentVersionWarning
+    warnings.filterwarnings("ignore", category=InconsistentVersionWarning)
+except ImportError:
+    pass
+warnings.filterwarnings("ignore", category=UserWarning, module='sklearn')
+
 from flask import Flask, request, render_template, jsonify
 import torch
 import torch.nn as nn
