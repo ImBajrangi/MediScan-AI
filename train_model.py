@@ -1,8 +1,3 @@
-"""
-MediScan AI - Enhanced Disease Prediction Model Training
-Features: Hyperparameter tuning, Probability Calibration, Ensemble Voting
-Supports: Merged datasets for expanded disease coverage
-"""
 
 import pandas as pd
 import numpy as np
@@ -22,11 +17,9 @@ print("=" * 60)
 print("MediScan AI - Enhanced Symptom-Based Model Training")
 print("=" * 60)
 
-# Dataset paths (prioritize merged dataset if available)
 merged_path = "./datasets/merged_disease_symptoms.csv"
 original_path = "./datasets/DiseaseAndSymptoms.csv"
 
-# Choose dataset based on availability
 if os.path.exists(merged_path):
     data_path = merged_path
     print(f"\n📂 Using MERGED dataset (expanded coverage)")
@@ -34,65 +27,43 @@ if os.path.exists(merged_path):
 else:
     data_path = original_path
     print(f"\n📂 Using original dataset")
-    print("   💡 Tip: Run 'python merge_datasets.py' for expanded dataset")
     is_merged = False
 
 data = pd.read_csv(data_path)
 print(f"   Loaded: {data_path}")
 
-# Process based on dataset format
 if is_merged:
-    # Merged dataset is already in binary matrix format
-    # Disease column + binary symptom columns
     disease_col = 'Disease'
     symptom_cols = [col for col in data.columns if col != disease_col]
     all_symptoms = sorted(symptom_cols)
-    
-    # X is already binary
     X = data[symptom_cols].astype(int)
-    
-    # Encode labels (y)
     le = LabelEncoder()
     y = le.fit_transform(data[disease_col])
 else:
-    # Original format: Disease + Symptom_1, Symptom_2, etc.
     cols = data.columns[1:]
     for col in cols:
         data[col] = data[col].str.strip()
-    
-    # Get unique symptoms and filter out NaN
     raw_symptoms = data[cols].values.ravel('K')
     all_symptoms = sorted(list(set([s for s in raw_symptoms if isinstance(s, str)])))
-    
-    # Create binary matrix (X)
     X = pd.DataFrame(0, index=np.arange(len(data)), columns=all_symptoms)
     for i in range(len(data)):
         row_symptoms = data.iloc[i, 1:].dropna().values
         X.loc[i, row_symptoms] = 1
-    
-    # Encode labels (y)
     le = LabelEncoder()
     y = le.fit_transform(data['Disease'])
 
-# ============================================================================
-# SMOTE OVERSAMPLING FOR MINORITY CLASSES
-# ============================================================================
 from collections import Counter
 from imblearn.over_sampling import SMOTE, RandomOverSampler
 
 print("\n🔄 Applying SMOTE oversampling for minority classes...")
-
-# Check class distribution
 class_counts = Counter(y)
 min_samples = min(class_counts.values())
 print(f"   Min samples per class: {min_samples}")
 print(f"   Total classes: {len(class_counts)}")
 
-# Calculate target samples per class (minimum 6 for stratified k-fold)
 target_samples = max(6, int(np.median(list(class_counts.values()))))
 print(f"   Target samples per class: {target_samples}")
 
-# Create sampling strategy
 sampling_strategy = {}
 for cls, count in class_counts.items():
     if count < target_samples:
@@ -100,10 +71,8 @@ for cls, count in class_counts.items():
 
 if sampling_strategy:
     try:
-        # Try SMOTE first (needs at least k_neighbors + 1 samples)
         min_for_smote = min(class_counts.values())
         k_neighbors = min(5, min_for_smote - 1) if min_for_smote > 1 else 1
-        
         if k_neighbors >= 1 and min_for_smote > 1:
             smote = SMOTE(
                 sampling_strategy=sampling_strategy,
@@ -113,11 +82,9 @@ if sampling_strategy:
             X_resampled, y_resampled = smote.fit_resample(X, y)
             print(f"   ✓ SMOTE applied successfully")
         else:
-            # Fallback to random oversampling for very small classes
             ros = RandomOverSampler(sampling_strategy=sampling_strategy, random_state=42)
             X_resampled, y_resampled = ros.fit_resample(X, y)
             print(f"   ✓ Random oversampling applied (some classes too small for SMOTE)")
-        
         X = pd.DataFrame(X_resampled, columns=all_symptoms)
         y = np.array(y_resampled)
         print(f"   ✓ Dataset size: {len(y)} samples (was {sum(class_counts.values())})")
@@ -125,11 +92,9 @@ if sampling_strategy:
         print(f"   ⚠️ Oversampling failed: {e}")
         print(f"   Using original data without oversampling")
 
-# Verify all classes still exist
 final_class_counts = Counter(y)
 print(f"   Final classes: {len(final_class_counts)}")
 
-# Perform stratified split
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
@@ -141,27 +106,22 @@ print(f"   Classes (Diseases): {len(np.unique(y))}")
 print(f"   Train Size: {len(X_train)}, Test Size: {len(X_test)}")
 print(f"   Split Method: stratified")
 
-# Large dataset mode - adjust parameters
 large_dataset = len(X) > 10000
 if large_dataset:
     print(f"\n⚡ Large dataset detected - using optimized parameters")
     print(f"   Estimated training time: 10-30 minutes")
 
-# ============================================================================
-# ENHANCED RANDOM FOREST
-# ============================================================================
-print("\n" + "-" * 50)
-print("🌲 Training Enhanced Random Forest...")
+print("\n🌲 Training Enhanced Random Forest...")
 print("-" * 50)
 
 rf = RandomForestClassifier(
-    n_estimators=500,           # Increased from 100
-    max_depth=25,               # Limit depth to prevent overfitting
-    min_samples_split=5,        # Minimum samples to split
-    min_samples_leaf=2,         # Minimum samples in leaf
-    class_weight='balanced',    # Handle class imbalance
+    n_estimators=500,
+    max_depth=25,
+    min_samples_split=5,
+    min_samples_leaf=2,
+    class_weight='balanced',
     random_state=42,
-    n_jobs=-1                   # Use all CPU cores
+    n_jobs=-1
 )
 
 rf.fit(X_train, y_train)
@@ -169,15 +129,10 @@ y_pred_rf = rf.predict(X_test)
 rf_accuracy = accuracy_score(y_test, y_pred_rf)
 print(f"   ✓ Random Forest Accuracy: {rf_accuracy * 100:.2f}%")
 
-# Cross-validation score
 cv_scores = cross_val_score(rf, X, y, cv=5)
 print(f"   ✓ Cross-Validation Score: {cv_scores.mean() * 100:.2f}% (±{cv_scores.std() * 100:.2f}%)")
 
-# ============================================================================
-# ENHANCED XGBOOST
-# ============================================================================
-print("\n" + "-" * 50)
-print("🚀 Training Enhanced XGBoost...")
+print("\n🚀 Training Enhanced XGBoost...")
 print("-" * 50)
 
 xgb_model = xgb.XGBClassifier(
@@ -196,14 +151,9 @@ y_pred_xgb = xgb_model.predict(X_test)
 xgb_accuracy = accuracy_score(y_test, y_pred_xgb)
 print(f"   ✓ XGBoost Accuracy: {xgb_accuracy * 100:.2f}%")
 
-# ============================================================================
-# PROBABILITY CALIBRATION
-# ============================================================================
-print("\n" + "-" * 50)
-print("🎯 Applying Probability Calibration...")
+print("\n🎯 Applying Probability Calibration...")
 print("-" * 50)
 
-# Calibrate RandomForest
 print("   Calibrating Random Forest (this may take a few minutes)...")
 calibrated_rf = CalibratedClassifierCV(
     estimator=RandomForestClassifier(
@@ -222,7 +172,6 @@ y_pred_cal_rf = calibrated_rf.predict(X_test)
 cal_rf_accuracy = accuracy_score(y_test, y_pred_cal_rf)
 print(f"   ✓ Calibrated RF Accuracy: {cal_rf_accuracy * 100:.2f}%")
 
-# Calibrate XGBoost
 print("   Calibrating XGBoost...")
 calibrated_xgb = CalibratedClassifierCV(
     estimator=xgb.XGBClassifier(
@@ -241,24 +190,12 @@ y_pred_cal_xgb = calibrated_xgb.predict(X_test)
 cal_xgb_accuracy = accuracy_score(y_test, y_pred_cal_xgb)
 print(f"   ✓ Calibrated XGBoost Accuracy: {cal_xgb_accuracy * 100:.2f}%")
 
-# ============================================================================
-# FINAL ROBUST ENSEMBLE (MAX ACCURACY/CONFIDENCE)
-# ============================================================================
-print("\n" + "="*50)
 print("🔗 Creating MediScan Clinical Engine v2.0 (Voting)...")
 print("="*50)
 
 from sklearn.ensemble import VotingClassifier
 
-# Using soft voting on calibrated models preserves the real high confidence
-# while maximizing ensemble accuracy.
-ensemble = VotingClassifier(
-    estimators=[
-        ('rf', calibrated_rf),
-        ('xgb', calibrated_xgb)
-    ],
-    voting='soft',
-    weights=[1.1, 0.9] # Slightly favor Random Forest stability
+    weights=[1.1, 0.9]
 )
 
 ensemble.fit(X_train, y_train)
@@ -273,17 +210,12 @@ y_proba = ensemble.predict_proba(X_test)
 avg_confidence = np.max(y_proba, axis=1).mean()
 print(f"   ✓ Average Prediction Confidence: {avg_confidence * 100:.2f}%")
 
-# ============================================================================
-# SELECT AND SAVE BEST MODEL
-# ============================================================================
-print("\n" + "=" * 60)
 print("📦 Saving Models...")
 print("=" * 60)
 
 models_dir = "./models"
 os.makedirs(models_dir, exist_ok=True)
 
-# Compare all models
 model_scores = {
     'Random Forest': rf_accuracy,
     'XGBoost': xgb_accuracy,
@@ -300,23 +232,16 @@ for name, score in model_scores.items():
     marker = "🏆" if name == best_model_name else "  "
     print(f"   {marker} {name}: {score * 100:.2f}%")
 
-# Save ensemble as primary model (best for confidence)
 joblib.dump(ensemble, os.path.join(models_dir, "enhanced_disease_model.joblib"))
 print(f"\n   ✓ Ensemble model saved")
 
-# Also save calibrated RF as backup
 joblib.dump(calibrated_rf, os.path.join(models_dir, "calibrated_rf_model.joblib"))
 print(f"   ✓ Calibrated RF model saved")
 
-# Save supporting files
 joblib.dump(le, os.path.join(models_dir, "label_encoder.joblib"))
 joblib.dump(all_symptoms, os.path.join(models_dir, "symptoms_list.joblib"))
 print(f"   ✓ Label encoder and symptoms list saved")
 
-# ============================================================================
-# FINAL SUMMARY
-# ============================================================================
-print("\n" + "=" * 60)
 print("✅ TRAINING COMPLETE!")
 print("=" * 60)
 print(f"\n🎯 Best Model: {best_model_name} ({best_accuracy * 100:.2f}%)")
