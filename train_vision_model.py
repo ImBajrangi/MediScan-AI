@@ -1,8 +1,3 @@
-"""
-MediScan AI - Enhanced Vision Model Training
-Features: Deeper CNN, BatchNorm, Dropout, Data Augmentation, 
-          Learning Rate Scheduling, Temperature Scaling
-"""
 
 import os
 import torch
@@ -14,14 +9,11 @@ from medmnist import DermaMNIST, INFO
 import joblib
 import numpy as np
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
 train_batch_size = 64
 test_batch_size = 64
 lr = 0.001
-epochs = 30  # Increased from 5
-patience = 5  # Early stopping patience
+epochs = 30
+patience = 5
 models_dir = "./models"
 os.makedirs(models_dir, exist_ok=True)
 
@@ -29,13 +21,9 @@ print("=" * 60)
 print("MediScan AI - Enhanced Vision Model Training")
 print("=" * 60)
 
-# ============================================================================
-# DATA LOADING WITH AUGMENTATION
-# ============================================================================
 info = INFO['dermamnist']
 n_classes = len(info['label'])
 
-# Enhanced data augmentation for training
 train_transform = transforms.Compose([
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.RandomVerticalFlip(p=0.3),
@@ -55,7 +43,6 @@ train_transform = transforms.Compose([
     transforms.Normalize(mean=[.5, .5, .5], std=[.5, .5, .5])
 ])
 
-# Standard transform for testing (no augmentation)
 test_transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(mean=[.5, .5, .5], std=[.5, .5, .5])
@@ -75,9 +62,6 @@ print(f"   Validation Samples: {len(val_dataset)}")
 print(f"   Test Samples: {len(test_dataset)}")
 print(f"   Classes: {n_classes}")
 
-# ============================================================================
-# ENHANCED CNN MODEL
-# ============================================================================
 class EnhancedCNN(nn.Module):
     """
     Deeper CNN with BatchNorm and Dropout for better feature extraction
@@ -86,7 +70,6 @@ class EnhancedCNN(nn.Module):
     def __init__(self, n_classes):
         super(EnhancedCNN, self).__init__()
         
-        # Block 1: 3 -> 64 channels
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(64)
         
@@ -107,8 +90,6 @@ class EnhancedCNN(nn.Module):
         self.relu = nn.ReLU()
         self.dropout_conv = nn.Dropout2d(0.25)
         
-        # Classifier - after 4 pooling ops: 28x28 -> 14 -> 7 -> 3 -> 1
-        # For DermaMNIST (28x28): After 3 pools -> 3x3, after 4 -> 1x1
         self.adaptive_pool = nn.AdaptiveAvgPool2d((2, 2))
         self.fc1 = nn.Linear(512 * 2 * 2, 512)
         self.dropout = nn.Dropout(0.5)
@@ -116,7 +97,6 @@ class EnhancedCNN(nn.Module):
         self.fc3 = nn.Linear(256, n_classes)
 
     def forward(self, x):
-        # Block 1
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -153,14 +133,7 @@ class EnhancedCNN(nn.Module):
         return x
 
 
-# ============================================================================
-# TEMPERATURE SCALING FOR CALIBRATION
-# ============================================================================
 class TemperatureScaledModel(nn.Module):
-    """
-    Wraps the trained model with temperature scaling for better
-    probability calibration and more reliable confidence scores.
-    """
     def __init__(self, model, temperature=1.5):
         super(TemperatureScaledModel, self).__init__()
         self.model = model
@@ -171,13 +144,8 @@ class TemperatureScaledModel(nn.Module):
         return logits / self.temperature
     
     def calibrate(self, val_loader, device, max_iter=50, lr=0.01):
-        """Optimize temperature on validation set"""
         self.model.eval()
         nll_criterion = nn.CrossEntropyLoss()
-        
-        # Collect all validation logits and labels
-        logits_list = []
-        labels_list = []
         
         with torch.no_grad():
             for inputs, labels in val_loader:
@@ -189,7 +157,6 @@ class TemperatureScaledModel(nn.Module):
         logits = torch.cat(logits_list).to(device)
         labels = torch.cat(labels_list).to(device).long()
         
-        # Optimize temperature
         optimizer = optim.LBFGS([self.temperature], lr=lr, max_iter=max_iter)
         
         def eval_temp():
@@ -203,9 +170,6 @@ class TemperatureScaledModel(nn.Module):
         return self.temperature.item()
 
 
-# ============================================================================
-# TRAINING SETUP
-# ============================================================================
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"\n🖥️  Using device: {device}")
 
@@ -213,18 +177,13 @@ model = EnhancedCNN(n_classes).to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
 
-# Learning rate scheduler
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode='max', factor=0.5, patience=3
 )
 
-# Count parameters
 total_params = sum(p.numel() for p in model.parameters())
 print(f"   Model Parameters: {total_params:,}")
 
-# ============================================================================
-# TRAINING LOOP WITH EARLY STOPPING
-# ============================================================================
 print(f"\n🏋️  Training for {epochs} epochs with early stopping (patience={patience})...")
 print("-" * 60)
 
@@ -234,7 +193,6 @@ train_losses = []
 val_accuracies = []
 
 for epoch in range(epochs):
-    # Training phase
     model.train()
     total_loss = 0
     correct = 0
@@ -259,7 +217,6 @@ for epoch in range(epochs):
     train_acc = 100 * correct / total
     train_losses.append(train_loss)
     
-    # Validation phase
     model.eval()
     correct = 0
     total = 0
@@ -275,14 +232,11 @@ for epoch in range(epochs):
     val_acc = 100 * correct / total
     val_accuracies.append(val_acc)
     
-    # Learning rate scheduling
     scheduler.step(val_acc)
     
-    # Early stopping check
     if val_acc > best_val_acc:
         best_val_acc = val_acc
         patience_counter = 0
-        # Save best model
         torch.save(model.state_dict(), os.path.join(models_dir, "best_vision_model.pth"))
     else:
         patience_counter += 1
@@ -296,25 +250,16 @@ for epoch in range(epochs):
         print(f"\n   ⚠️ Early stopping triggered at epoch {epoch + 1}")
         break
 
-# Load best model
 model.load_state_dict(torch.load(os.path.join(models_dir, "best_vision_model.pth")))
 
-# ============================================================================
-# TEMPERATURE SCALING CALIBRATION
-# ============================================================================
-print("\n" + "-" * 60)
-print("🎯 Applying Temperature Scaling for Calibration...")
+print("\n🎯 Applying Temperature Scaling for Calibration...")
 print("-" * 60)
 
 temp_model = TemperatureScaledModel(model).to(device)
 optimal_temp = temp_model.calibrate(val_loader, device)
 print(f"   Optimal Temperature: {optimal_temp:.4f}")
 
-# ============================================================================
-# FINAL EVALUATION ON TEST SET
-# ============================================================================
-print("\n" + "-" * 60)
-print("📊 Final Evaluation on Test Set...")
+print("\n📊 Final Evaluation on Test Set...")
 print("-" * 60)
 
 temp_model.eval()
@@ -347,25 +292,19 @@ print("\n" + "=" * 60)
 print("📦 Saving Models...")
 print("=" * 60)
 
-# Save temperature-scaled model state
 torch.save({
     'model_state_dict': model.state_dict(),
     'temperature': temp_model.temperature.item(),
     'n_classes': n_classes
 }, os.path.join(models_dir, "vision_disease_model.pth"))
 
-# Save label map
 label_map = {int(k): v for k, v in info['label'].items()}
 joblib.dump(label_map, os.path.join(models_dir, "vision_label_map.joblib"))
 
 print(f"   ✓ Enhanced vision model saved")
 print(f"   ✓ Label map saved")
 
-# ============================================================================
-# SUMMARY
-# ============================================================================
-print("\n" + "=" * 60)
-print("✅ TRAINING COMPLETE!")
+print("\n✅ TRAINING COMPLETE!")
 print("=" * 60)
 print(f"\n🏆 Best Validation Accuracy: {best_val_acc:.2f}%")
 print(f"📊 Test Accuracy: {test_accuracy:.2f}%")

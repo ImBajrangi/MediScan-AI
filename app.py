@@ -22,12 +22,11 @@ app.config['UPLOAD_FOLDER'] = './uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Base directory for paths
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 models_dir = os.path.join(BASE_DIR, "models")
 datasets_dir = os.path.join(BASE_DIR, "datasets")
 
-# Define Enhanced Model Architectures (legacy CNN for backward compat)
 class EnhancedCNN(nn.Module):
     def __init__(self, n_classes):
         super(EnhancedCNN, self).__init__()
@@ -62,7 +61,6 @@ class EnhancedCNN(nn.Module):
         x = self.fc3(x)
         return x
 
-# Temperature Scaling Wrapper
 class TemperatureScaledModel(nn.Module):
     def __init__(self, model, temperature=1.5):
         super(TemperatureScaledModel, self).__init__()
@@ -73,18 +71,15 @@ class TemperatureScaledModel(nn.Module):
         logits = self.model(x)
         return logits / self.temperature
 
-# Check for enhanced model first, then fallback to original
+
 enhanced_model_path = os.path.join(models_dir, "vision_disease_model_enhanced.pth")
 enhanced_label_path = os.path.join(models_dir, "vision_label_map_enhanced.joblib")
 model_path = os.path.join(models_dir, "vision_disease_model.pth")
 label_map_path = os.path.join(models_dir, "vision_label_map.joblib")
 
-# Determine which vision model to use
 use_enhanced_vision = os.path.exists(enhanced_model_path) and os.path.exists(enhanced_label_path)
 
-# Check if model files are Git LFS pointers (not actual files)
 def is_lfs_pointer(filepath):
-    """Check if file is a Git LFS pointer instead of actual content"""
     try:
         with open(filepath, 'rb') as f:
             header = f.read(50)
@@ -93,7 +88,6 @@ def is_lfs_pointer(filepath):
         return False
 
 def check_model_files():
-    """Validate all model files are properly downloaded"""
     model_files = [
         model_path, 
         label_map_path,
@@ -111,20 +105,16 @@ def check_model_files():
             raise ValueError(f"Git LFS file not downloaded properly: {mf}. "
                            f"Run 'git lfs pull' to download model files.")
 
-# Try to load models with error handling
 try:
     if use_enhanced_vision:
-        # Load enhanced MobileNetV3 model (20 classes)
         print("🔥 Loading ENHANCED vision model (MobileNetV3, 20 classes)...")
         label_map = joblib.load(enhanced_label_path)
         n_classes = len(label_map)
         
-        # Build MobileNetV3-Small architecture
         base_model = models.mobilenet_v3_small(weights=None)
         num_ftrs = base_model.classifier[3].in_features
         base_model.classifier[3] = nn.Linear(num_ftrs, n_classes)
         
-        # Wrap with temperature scaling
         vision_model = TemperatureScaledModel(base_model)
         
         # Load weights
@@ -142,7 +132,6 @@ try:
         vision_model_loaded = True
         print(f"✓ Enhanced Vision model loaded: {n_classes} classes")
     else:
-        # Legacy model loading
         label_map = joblib.load(label_map_path)
         n_classes = len(label_map)
         base_model = EnhancedCNN(n_classes)
@@ -180,7 +169,7 @@ except Exception as e:
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-# Label mapping for vision
+
 labels_pretty = {
     "akiec": "Actinic Keratoses / Intraepithelial Carcinoma",
     "bcc": "Basal Cell Carcinoma",
@@ -191,8 +180,7 @@ labels_pretty = {
     "vasc": "Vascular Lesions"
 }
 
-# --- Load Symptom Prediction Model (Calibrated RF - better confidence) ---
-# Using calibrated_rf_model.joblib instead of ensemble for better confidence scores
+
 symptom_model_path = os.path.join(models_dir, "calibrated_rf_model.joblib")
 symptom_le_path = os.path.join(models_dir, "label_encoder.joblib")
 symptoms_list_path = os.path.join(models_dir, "symptoms_list.joblib")
@@ -216,9 +204,7 @@ except Exception as e:
 
 import re
 
-# Symptom synonyms - maps common user input to actual symptom names in the model
 SYMPTOM_SYNONYMS = {
-    # Pain variations
     'body_aches': 'muscle_pain',
     'muscle_aches': 'muscle_pain',
     'body_pain': 'muscle_pain',
@@ -294,7 +280,6 @@ def clean_symptom(s):
     s = s.strip().lower()
     s = re.sub(r'[^a-zA-Z0-9\s_]', '', s)
     s = s.replace(' ', '_')
-    # Check for synonyms/aliases
     if s in SYMPTOM_SYNONYMS:
         s = SYMPTOM_SYNONYMS[s]
     return s
@@ -306,7 +291,6 @@ def index():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    # Check if vision model is available
     if not vision_model_loaded or model is None:
         return jsonify({'error': 'Vision model not available. The model files may not have loaded correctly.'}), 503
     
@@ -318,16 +302,10 @@ def predict():
         return jsonify({'error': 'No file selected'}), 400
     
     try:
-        # Save and process image
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         
-        # Load and transform image
-        image = Image.open(filepath).convert('RGB')
-        input_tensor = transform(image).unsqueeze(0)
-        
-        # Predict
         with torch.no_grad():
             output = model(input_tensor)
             probabilities = torch.softmax(output, dim=1)
@@ -336,32 +314,21 @@ def predict():
         predicted_label = label_map[predicted.item()]
         pretty_name = labels_pretty.get(predicted_label, predicted_label)
         
-        # ============================================================
-        # VISION CONFIDENCE REFINEMENT (REAL ACCURACY BOOST)
-        # ============================================================
         import math
         raw_conf = raw_confidence.item()
         
-        # Get probability gap (Certainty measure)
-        sorted_probs, _ = torch.sort(probabilities, descending=True)
         top1 = sorted_probs[0, 0].item()
         top2 = sorted_probs[0, 1].item()
         prob_gap = top1 - top2
         
-        # A high probability gap means the model is "really" certain
-        # The certainty index combines absolute prob and the gap
         certainty_index = (top1 * 0.7) + (prob_gap * 0.3)
         
-        # Sigmoid scaling maps the certainty index to a human-readable high confidence
-        # while preserving the "real" underlying performance
         k = 6 # Sharpness factor
         x0 = 0.2 # Midpoint for skin images (harder task)
         final_confidence = 1 / (1 + math.exp(-k * (certainty_index - x0)))
         
-        # Map to 80-98 range for good predictions
         final_confidence = 0.8 + (final_confidence * 0.18)
         
-        # Determine severity
         is_serious = predicted_label in ["mel", "bcc", "akiec", "Melanoma Skin Cancer Nevi and Moles", 
                                           "Actinic Keratosis Basal Cell Carcinoma and other Malignant Lesions"]
         
@@ -378,7 +345,6 @@ def predict():
 
 @app.route('/predict_symptoms', methods=['POST'])
 def predict_symptoms():
-    # Check if symptom model is available
     if not symptom_model_loaded or symptom_model is None:
         return jsonify({'error': 'Symptom model not available. The model files may not have loaded correctly.'}), 503
     
@@ -389,24 +355,19 @@ def predict_symptoms():
         return jsonify({'error': 'No symptoms provided'}), 400
     
     try:
-        # Prepare input vector
         input_vector = pd.DataFrame(0, index=[0], columns=all_symptoms)
         
-        # Clean and match symptoms
         matched_symptoms = []
         for s in user_symptoms:
             s_clean = clean_symptom(s)
             
-            # 1. Direct match (e.g. "itching" -> "itching")
             if s_clean in all_symptoms:
                 input_vector.loc[0, s_clean] = 1
                 matched_symptoms.append(s_clean)
                 continue
             
-            # 2. Synonym match (e.g. "rashes" -> "skin_rash")
             mapped = SYMPTOM_SYNONYMS.get(s_clean)
             if not mapped and s_clean.endswith('s'):
-                # Try singular form
                 mapped = SYMPTOM_SYNONYMS.get(s_clean[:-1])
             
             if mapped and mapped in all_symptoms:
@@ -414,14 +375,11 @@ def predict_symptoms():
                 matched_symptoms.append(mapped)
                 continue
                 
-            # 3. Keyword / Substring match (e.g. "rash" -> "skin_rash")
             best_match = None
             
-            # Simple word stripping for plurals if not in synonyms
             s_singular = s_clean[:-1] if s_clean.endswith('s') else s_clean
             
             for clinical_s in all_symptoms:
-                # Check if user input is part of clinical term OR vice versa
                 if (s_clean in clinical_s or clinical_s in s_clean or 
                     s_singular in clinical_s or clinical_s in s_singular):
                     best_match = clinical_s
@@ -438,45 +396,28 @@ def predict_symptoms():
                 'entered': user_symptoms
             }), 404
         
-        # Predict
         prediction_idx = symptom_model.predict(input_vector)[0]
         probabilities = symptom_model.predict_proba(input_vector)[0]
         
         disease = symptom_le.inverse_transform([prediction_idx])[0]
         raw_confidence = np.max(probabilities)
         
-        # ============================================================
-        # CONFIDENCE BOOSTING ALGORITHM
-        # ============================================================
-        # Boost confidence based on symptom match quality
+        import math
         num_matched = len(matched_symptoms)
         num_provided = len(user_symptoms)
         match_ratio = num_matched / max(num_provided, 1)
         
-        # Confidence boosting factors:
-        # 1. More symptoms = higher confidence (up to 1.5x boost for 5+ symptoms)
-        symptom_boost = min(1.0 + (num_matched * 0.12), 1.6)  # Max 1.6x
+        symptom_boost = min(1.0 + (num_matched * 0.12), 1.6)
         
-        # 2. Good match ratio = higher confidence
-        ratio_boost = 0.8 + (match_ratio * 0.4)  # 0.8 to 1.2x
+        ratio_boost = 0.8 + (match_ratio * 0.4)
         
-        # 3. Apply sigmoid scaling for smoother high-confidence output
-        # This maps low probabilities higher while capping at ~95%
         scaled_conf = raw_confidence * symptom_boost * ratio_boost
         
-        # Sigmoid-based confidence scaling: pushes mid-range values higher
-        # Formula: 1 / (1 + e^(-k*(x-0.5))) where k controls steepness
-        import math
-        k = 6  # Steepness factor
+        k = 6
         sigmoid_conf = 1 / (1 + math.exp(-k * (scaled_conf - 0.3)))
         
-        # Final confidence (blend of scaled and sigmoid, capped at 95%)
         final_confidence = min(0.95, max(sigmoid_conf, scaled_conf * 1.2))
         
-        # Use genuine confidence (no artificial floor)
-        # Only natural boosting from symptom count quality
-        
-        # Look up precautions
         precautions = []
         prec_row = precaution_df[precaution_df['Disease'] == disease]
         if not prec_row.empty:

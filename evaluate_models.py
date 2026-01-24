@@ -1,7 +1,3 @@
-"""
-MediScan AI - Enhanced Model Evaluation and Visualization
-Generates: Confusion Matrix, Training Curves, Classification Report, Calibration Plots
-"""
 
 import os
 import numpy as np
@@ -21,41 +17,31 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from medmnist import DermaMNIST, INFO
 
-# Create results directory
 results_dir = "./evaluation_results"
 os.makedirs(results_dir, exist_ok=True)
 
-# ============================================================================
-# PART 1: ENHANCED SYMPTOM-BASED MODEL EVALUATION
-# ============================================================================
 print("=" * 60)
 print("PART 1: ENHANCED SYMPTOM-BASED DISEASE PREDICTION MODEL")
 print("=" * 60)
 
-# Load data
 data_path = "./datasets/DiseaseAndSymptoms.csv"
 data = pd.read_csv(data_path)
 
-# Preprocessing
 cols = data.columns[1:]
 for col in cols:
     data[col] = data[col].str.strip()
 
-# Get all symptoms
 raw_symptoms = data[cols].values.ravel('K')
 all_symptoms = sorted(list(set([s for s in raw_symptoms if isinstance(s, str)])))\
 
-# Create binary matrix
 X = pd.DataFrame(0, index=np.arange(len(data)), columns=all_symptoms)
 for i in range(len(data)):
     row_symptoms = data.iloc[i, 1:].dropna().values
     X.loc[i, row_symptoms] = 1
 
-# Encode labels
 le = LabelEncoder()
 y = le.fit_transform(data['Disease'])
 
-# Split
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 print(f"Total Samples: {len(data)}")
@@ -63,12 +49,8 @@ print(f"Features (Symptoms): {len(all_symptoms)}")
 print(f"Classes (Diseases): {len(le.classes_)}")
 print(f"Train Size: {len(X_train)}, Test Size: {len(X_test)}")
 
-# ============================================================================
-# TRAIN ENHANCED ENSEMBLE MODEL
-# ============================================================================
 print("\n🔧 Training Enhanced Ensemble Model...")
 
-# Enhanced Random Forest
 rf = RandomForestClassifier(
     n_estimators=400,
     max_depth=22,
@@ -78,7 +60,6 @@ rf = RandomForestClassifier(
     n_jobs=-1
 )
 
-# Enhanced XGBoost
 xgb_model = xgb.XGBClassifier(
     n_estimators=250,
     max_depth=14,
@@ -89,7 +70,6 @@ xgb_model = xgb.XGBClassifier(
     eval_metric='mlogloss'
 )
 
-# Ensemble with soft voting
 ensemble = VotingClassifier(
     estimators=[('rf', rf), ('xgb', xgb_model)],
     voting='soft',
@@ -100,19 +80,16 @@ ensemble.fit(X_train, y_train)
 y_pred = ensemble.predict(X_test)
 y_proba = ensemble.predict_proba(X_test)
 
-# Metrics
 accuracy = accuracy_score(y_test, y_pred)
 avg_confidence = np.max(y_proba, axis=1).mean()
 print(f"\n✓ Ensemble Accuracy: {accuracy * 100:.2f}%")
 print(f"✓ Average Confidence: {avg_confidence * 100:.2f}%")
 
-# Save Classification Report
 report = classification_report(y_test, y_pred, target_names=le.classes_, output_dict=True)
 report_df = pd.DataFrame(report).transpose()
 report_df.to_csv(os.path.join(results_dir, "symptom_classification_report.csv"))
 print(f"✓ Classification report saved")
 
-# Confusion Matrix (Top 20 diseases)
 cm = confusion_matrix(y_test, y_pred)
 top_classes = np.argsort(np.bincount(y_test))[-20:]
 
@@ -131,8 +108,7 @@ plt.savefig(os.path.join(results_dir, "symptom_confusion_matrix.png"), dpi=150)
 plt.close()
 print(f"✓ Confusion matrix saved")
 
-# Feature Importance (from RF component)
-rf.fit(X_train, y_train)  # Fit separately to get feature importance
+rf.fit(X_train, y_train)
 feature_importance = pd.DataFrame({
     'symptom': all_symptoms,
     'importance': rf.feature_importances_
@@ -148,7 +124,6 @@ plt.savefig(os.path.join(results_dir, "symptom_feature_importance.png"), dpi=150
 plt.close()
 print(f"✓ Feature importance chart saved")
 
-# Confidence Distribution Plot
 plt.figure(figsize=(10, 6))
 max_probs = np.max(y_proba, axis=1)
 plt.hist(max_probs, bins=50, edgecolor='black', alpha=0.7, color='steelblue')
@@ -162,18 +137,13 @@ plt.savefig(os.path.join(results_dir, "symptom_confidence_distribution.png"), dp
 plt.close()
 print(f"✓ Confidence distribution saved")
 
-# ============================================================================
-# PART 2: ENHANCED VISION MODEL EVALUATION
-# ============================================================================
 print("\n" + "=" * 60)
 print("PART 2: ENHANCED VISION-BASED SKIN DISEASE PREDICTION MODEL")
 print("=" * 60)
 
-# Load data
 info = INFO['dermamnist']
 n_classes = len(info['label'])
 
-# Enhanced data augmentation for training
 train_transform = transforms.Compose([
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.RandomVerticalFlip(p=0.3),
@@ -202,9 +172,6 @@ print(f"Validation Samples: {len(val_dataset)}")
 print(f"Test Samples: {len(test_dataset)}")
 print(f"Classes: {n_classes}")
 
-# ============================================================================
-# ENHANCED CNN MODEL DEFINITION
-# ============================================================================
 class EnhancedCNN(nn.Module):
     def __init__(self, n_classes):
         super(EnhancedCNN, self).__init__()
@@ -241,7 +208,6 @@ class EnhancedCNN(nn.Module):
         return x
 
 
-# Temperature Scaling
 class TemperatureScaledModel(nn.Module):
     def __init__(self, model, temperature=1.5):
         super().__init__()
@@ -259,7 +225,6 @@ criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=3)
 
-# Training with history
 epochs = 25
 train_losses = []
 train_accuracies = []
@@ -291,7 +256,6 @@ for epoch in range(epochs):
     train_losses.append(train_loss)
     train_accuracies.append(train_acc)
     
-    # Validation accuracy
     model.eval()
     correct = 0
     total = 0
@@ -312,10 +276,8 @@ for epoch in range(epochs):
     
     print(f"Epoch [{epoch+1}/{epochs}] Loss: {train_loss:.4f}, Train: {train_acc:.2f}%, Val: {val_acc:.2f}%")
 
-# Apply temperature scaling
 temp_model = TemperatureScaledModel(model).to(device)
 
-# Final test evaluation
 temp_model.eval()
 correct = 0
 total = 0
@@ -339,17 +301,14 @@ vision_avg_confidence = np.max(all_probs, axis=1).mean()
 print(f"\n✓ Final Test Accuracy: {test_acc:.2f}%")
 print(f"✓ Average Confidence: {vision_avg_confidence * 100:.2f}%")
 
-# Plot Training Curves
 fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
-# Loss Curve
 axes[0].plot(range(1, epochs+1), train_losses, 'b-o', linewidth=2, markersize=4)
 axes[0].set_xlabel('Epoch', fontsize=12)
 axes[0].set_ylabel('Loss', fontsize=12)
 axes[0].set_title('Training Loss Curve', fontsize=14)
 axes[0].grid(True, alpha=0.3)
 
-# Accuracy Curves
 axes[1].plot(range(1, epochs+1), train_accuracies, 'b-o', label='Train Accuracy', linewidth=2, markersize=4)
 axes[1].plot(range(1, epochs+1), val_accuracies, 'r-s', label='Val Accuracy', linewidth=2, markersize=4)
 axes[1].set_xlabel('Epoch', fontsize=12)
@@ -363,7 +322,6 @@ plt.savefig(os.path.join(results_dir, "vision_training_curves.png"), dpi=150)
 plt.close()
 print(f"✓ Training curves saved")
 
-# Vision Confusion Matrix
 model.eval()
 all_preds = []
 all_targets = []
@@ -392,7 +350,6 @@ plt.savefig(os.path.join(results_dir, "vision_confusion_matrix.png"), dpi=150)
 plt.close()
 print(f"✓ Vision confusion matrix saved")
 
-# Vision Confidence Distribution
 plt.figure(figsize=(10, 6))
 vision_max_probs = np.max(all_probs, axis=1)
 plt.hist(vision_max_probs, bins=50, edgecolor='black', alpha=0.7, color='coral')
@@ -407,9 +364,6 @@ plt.savefig(os.path.join(results_dir, "vision_confidence_distribution.png"), dpi
 plt.close()
 print(f"✓ Vision confidence distribution saved")
 
-# ============================================================================
-# SUMMARY
-# ============================================================================
 print("\n" + "=" * 60)
 print("EVALUATION COMPLETE!")
 print("=" * 60)
