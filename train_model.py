@@ -195,7 +195,13 @@ print("="*50)
 
 from sklearn.ensemble import VotingClassifier
 
-    weights=[1.1, 0.9]
+ensemble = VotingClassifier(
+    estimators=[
+        ('rf', calibrated_rf),
+        ('xgb', calibrated_xgb)
+    ],
+    voting='soft',
+    weights=[1.1,0.9]
 )
 
 ensemble.fit(X_train, y_train)
