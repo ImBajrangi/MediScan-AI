@@ -1,4 +1,4 @@
-# MediScan AI: $50,000 Competition Pitch Script (Global AI Summit)
+# MediScan AI: Competition Pitch Script (Global AI Summit)
 
 ## 🎤 Stage Introduction: The "Hook"
 *(Walk onto the stage. No slides yet. Just you and the audience.)*
@@ -27,7 +27,7 @@ MediScan AI isn't just a 'predictive tool'—it is a **Clinical-Grade Triage Sys
 
 "What makes us different? It’s our obsession with **Certitude**. 
 
-1. **The Clinical Engine**: We moved beyond simple classification. We developed a **Soft-Voting Ensemble** (Random Forest + XGBoost) and applied **Isotonic Regression** for clinical calibration. The result? A battle-tested **99.93% average confidence** across 400+ diseases.
+1. **The Clinical Engine**: We moved beyond simple classification. We developed a **Soft-Voting Ensemble** (Random Forest + XGBoost) trained on over **1,000 unique symptoms**. We applied **Isotonic Regression** for clinical calibration. The result? A battle-tested **99.93% average confidence** across **426 unique diseases**.
 2. **The Vision Engine**: We fine-tuned **MobileNetV3** to detect 20 critical skin conditions. But here's the edge: we don't just give you a label.
 3. **The 'Killer' Feature - Certainty-Indexed Logic**: Our proprietary algorithm analyzes the **'Probability Gap'** between predictions. If the AI isn't absolutely sure, it triggers a clinical severity alert. This isn't just 'smart'—it's **safe**."
 
@@ -75,4 +75,4 @@ Thank you."
 4. **The "Why Us"**: If they ask about competitors, say: *"The difference is our Certitude Logic. We prioritize clinical safety over just 'getting a result'."*
 1. **The Demo**: If possible, show a 10-second screen recording of the "Pulse-Glow" logo and a quick symptom input. The visual "wow" factor matters.
 2. **The Disclaimer**: At the end of the Q&A, always mention that this is for *preliminary triage* and not a final medical diagnosis. It shows you are an ethical developer.
-3. **The Numbers**: Memorize the **99.93%** and **6MB model size**. These are the "hooks" for the technical judges.
+3. **The Numbers**: Memorize the **99.93% confidence**, **426 diseases**, **1,028 symptoms**, and **6MB model size**. These are the "hooks" for the technical judges.

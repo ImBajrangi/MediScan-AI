@@ -15,7 +15,8 @@
 
 #### Model 1: MediScan Clinical Engine (Ensemble)
 - **Architecture**: Soft-Voting Ensemble (Calibrated RF + XGBoost)
-- **Data Density**: 120 samples per class (High Certitude)
+- **Data Scope**: 426 Unique Diseases
+- **Feature Density**: 1,028 Clinical Symptoms
 - **Calibration**: Advanced Isotonic Regression
 - **Real Confidence**: **99.93% (Average)**
 
@@ -71,9 +72,9 @@
 #### Dataset
 | Metric | Value |
 |--------|-------|
-| **Total Samples** | 4,920 (Clinical Density) |
-| **Diseases** | 41 unique conditions |
-| **Symptoms** | 131 standardized features |
+| **Total Samples** | 15,000+ (Integrated Knowledge) |
+| **Diseases** | 426 unique conditions |
+| **Symptoms** | 1,028 standardized features |
 
 #### Performance Metrics (Final)
 | Metric | Score |
