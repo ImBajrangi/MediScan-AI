@@ -45,6 +45,13 @@
                 </svg>
                 Pictorial Diagnosis
             </button>
+            <button class="tab-btn" data-tab="ckd">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                </svg>
+                CKD Classification
+            </button>
         </div>
 
         <main>
@@ -89,6 +96,54 @@
                         <div class="loader" style="display: none;"></div>
                     </button>
                     <button class="text-btn" id="cancelUpload">Change Image</button>
+                </div>
+            </section>
+
+            <section id="ckdSection" class="tab-content">
+                <div class="ckd-grid">
+                    <div class="card glass">
+                        <div class="card-header">
+                            <h2>Clinical CKD Staging</h2>
+                            <p>Provide key lab values to determine Chronic Kidney Disease stage.</p>
+                        </div>
+                        <div class="ckd-form-container">
+                            <div class="ckd-input-vertical">
+                                <input type="number" id="ckdAge" class="modern-input" placeholder="Age (e.g. 55)">
+                                <input type="number" id="ckdGfr" class="modern-input" placeholder="GFR (mL/min/1.73m²)">
+                                <div class="select-wrapper modern-input">
+                                    <select id="ckdAlbuminuria">
+                                        <option value="" disabled selected>Albuminuria Level</option>
+                                        <option value="0">Normal (A1)</option>
+                                        <option value="1">Moderate (A2)</option>
+                                        <option value="2">Severe (A3)</option>
+                                    </select>
+                                </div>
+                                <button id="ckdClinicalBtn" class="primary-btn large-btn">Analyze CKD Staging</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card glass">
+                        <div class="card-header">
+                            <h2>Kidney Imaging Analysis</h2>
+                            <p>Upload a kidney ultrasound image for visual assessment.</p>
+                        </div>
+                        <div class="upload-area mini-upload" id="ckdUploadArea">
+                            <div class="upload-icon-box small">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                                </svg>
+                            </div>
+                            <p>Upload Ultrasound Image</p>
+                            <input type="file" id="ckdFileInput" accept="image/*" hidden>
+                        </div>
+                        <div id="ckdPreviewSection" style="display: none; text-align: center; margin-top: 1rem;">
+                            <img id="ckdPreviewImage"
+                                style="max-width: 250px; border-radius: 12px; margin: 0 auto 1rem; display: block;">
+                            <button id="ckdAnalyzeBtn" class="analyze-btn">Start Ultrasound Analysis</button>
+                            <button class="text-btn" id="ckdCancelUpload">Change Image</button>
+                        </div>
+                    </div>
                 </div>
             </section>
 

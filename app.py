@@ -14,12 +14,28 @@ app.config['UPLOAD_FOLDER'] = './uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Base directory for paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 models_dir = os.path.join(BASE_DIR, "models")
 datasets_dir = os.path.join(BASE_DIR, "datasets")
 
-# Define model architecture
+class CKDKidneyCNN(nn.Module):
+    def __init__(self, n_classes=3):
+        super(CKDKidneyCNN, self).__init__()
+        self.conv1 = nn.Conv2d(1, 16, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.fc1 = nn.Linear(32 * 7 * 7, 64)
+        self.fc2 = nn.Linear(64, n_classes)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = self.pool(self.relu(self.conv1(x)))
+        x = self.pool(self.relu(self.conv2(x)))
+        x = x.view(-1, 32 * 7 * 7)
+        x = self.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
 class SimpleCNN(nn.Module):
     def __init__(self, n_classes):
         super(SimpleCNN, self).__init__()
@@ -38,11 +54,9 @@ class SimpleCNN(nn.Module):
         x = self.fc2(x)
         return x
 
-# Load model
 model_path = os.path.join(models_dir, "vision_disease_model.pth")
 label_map_path = os.path.join(models_dir, "vision_label_map.joblib")
 
-# Check if model files are Git LFS pointers (not actual files)
 def is_lfs_pointer(filepath):
     """Check if file is a Git LFS pointer instead of actual content"""
     try:
@@ -57,7 +71,7 @@ def check_model_files():
     model_files = [
         model_path, 
         label_map_path,
-        os.path.join(models_dir, "best_disease_model_rf.joblib"),
+        os.path.join(models_dir, "enhanced_disease_model.joblib"),
         os.path.join(models_dir, "label_encoder.joblib"),
         os.path.join(models_dir, "symptoms_list.joblib")
     ]
@@ -67,11 +81,9 @@ def check_model_files():
         if is_lfs_pointer(mf):
             raise ValueError(f"Git LFS file not downloaded properly: {mf}. "
                            f"Run 'git lfs pull' to download model files.")
-        # Check file size (LFS pointers are ~130 bytes)
-        if os.path.getsize(mf) < 1000:
+        if os.path.getsize(mf) < 50:
             raise ValueError(f"Model file too small (likely LFS pointer): {mf}")
 
-# Validate models on startup
 try:
     check_model_files()
     print("✓ All model files validated successfully")
@@ -79,7 +91,6 @@ except Exception as e:
     print(f"⚠ Model validation error: {e}")
     print("Starting in limited mode - some features may not work")
 
-# Try to load models with error handling
 try:
     label_map = joblib.load(label_map_path)
     n_classes = len(label_map)
@@ -94,14 +105,12 @@ except Exception as e:
     model = None
     label_map = {}
 
-# Preprocessing
 transform = transforms.Compose([
     transforms.Resize((28, 28)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[.5, .5, .5], std=[.5, .5, .5])
 ])
 
-# Label mapping for vision
 labels_pretty = {
     "akiec": "Actinic Keratoses / Intraepithelial Carcinoma",
     "bcc": "Basal Cell Carcinoma",
@@ -112,8 +121,7 @@ labels_pretty = {
     "vasc": "Vascular Lesions"
 }
 
-# --- Load Symptom Prediction Model ---
-symptom_model_path = os.path.join(models_dir, "best_disease_model_rf.joblib")
+symptom_model_path = os.path.join(models_dir, "enhanced_disease_model.joblib")
 symptom_le_path = os.path.join(models_dir, "label_encoder.joblib")
 symptoms_list_path = os.path.join(models_dir, "symptoms_list.joblib")
 precaution_path = os.path.join(datasets_dir, "Disease precaution.csv")
@@ -132,7 +140,20 @@ except Exception as e:
     symptom_model = None
     symptom_le = None
     all_symptoms = []
-    precaution_df = pd.DataFrame()
+# --- CKD Models ---
+ckd_clinical_path = os.path.join(models_dir, "ckd_clinical_model.joblib")
+ckd_vision_path = os.path.join(models_dir, "ckd_vision_model.pth")
+
+try:
+    ckd_model = joblib.load(ckd_clinical_path)
+    ckd_vision_model = CKDKidneyCNN(n_classes=3)
+    ckd_vision_model.load_state_dict(torch.load(ckd_vision_path, map_location=torch.device('cpu')))
+    ckd_vision_model.eval()
+    ckd_models_loaded = True
+    print("✓ CKD models loaded successfully")
+except Exception as e:
+    print(f"⚠ CKD models failed to load: {e}")
+    ckd_models_loaded = False
 
 import re
 def clean_symptom(s):
@@ -148,7 +169,6 @@ def index():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    # Check if vision model is available
     if not vision_model_loaded or model is None:
         return jsonify({'error': 'Vision model not available. The model files may not have loaded correctly.'}), 503
     
@@ -160,16 +180,13 @@ def predict():
         return jsonify({'error': 'No file selected'}), 400
     
     try:
-        # Save and process image
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         
-        # Load and transform image
         image = Image.open(filepath).convert('RGB')
         input_tensor = transform(image).unsqueeze(0)
         
-        # Predict
         with torch.no_grad():
             output = model(input_tensor)
             probabilities = torch.softmax(output, dim=1)
@@ -178,7 +195,6 @@ def predict():
         predicted_label = label_map[predicted.item()]
         pretty_name = labels_pretty.get(predicted_label, predicted_label)
         
-        # Determine severity
         is_serious = predicted_label in ["mel", "bcc", "akiec"]
         
         return jsonify({
@@ -193,7 +209,6 @@ def predict():
 
 @app.route('/predict_symptoms', methods=['POST'])
 def predict_symptoms():
-    # Check if symptom model is available
     if not symptom_model_loaded or symptom_model is None:
         return jsonify({'error': 'Symptom model not available. The model files may not have loaded correctly.'}), 503
     
@@ -204,10 +219,8 @@ def predict_symptoms():
         return jsonify({'error': 'No symptoms provided'}), 400
     
     try:
-        # Prepare input vector
         input_vector = pd.DataFrame(0, index=[0], columns=all_symptoms)
         
-        # Clean and match symptoms
         matched_symptoms = []
         for s in user_symptoms:
             s_clean = clean_symptom(s)
@@ -218,14 +231,12 @@ def predict_symptoms():
         if not matched_symptoms:
             return jsonify({'error': 'No matching symptoms found in database'}), 404
         
-        # Predict
         prediction_idx = symptom_model.predict(input_vector)[0]
         probabilities = symptom_model.predict_proba(input_vector)[0]
         
         disease = symptom_le.inverse_transform([prediction_idx])[0]
         confidence = np.max(probabilities)
         
-        # Look up precautions
         precautions = []
         prec_row = precaution_df[precaution_df['Disease'] == disease]
         if not prec_row.empty:
@@ -242,6 +253,68 @@ def predict_symptoms():
             'matched': matched_symptoms
         })
     
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/predict_ckd', methods=['POST'])
+def predict_ckd():
+    if not ckd_models_loaded:
+        return jsonify({'error': 'CKD models not loaded'}), 503
+    
+    data = request.json
+    try:
+        # Features: age, gfr, albuminuria
+        features = pd.DataFrame([[
+            data.get('age', 50),
+            data.get('gfr', 60),
+            data.get('albuminuria', 0)
+        ]], columns=['age', 'gfr', 'albuminuria'])
+        
+        prediction = ckd_model.predict(features)[0]
+        
+        # Staging descriptions
+        stage_desc = {
+            "G1": "Stage 1: Normal or high GFR (>= 90)",
+            "G2": "Stage 2: Mildly decreased GFR (60-89)",
+            "G3a": "Stage 3a: Mildly to moderately decreased GFR (45-59)",
+            "G3b": "Stage 3b: Moderately to severely decreased GFR (30-44)",
+            "G4": "Stage 4: Severely decreased GFR (15-29)",
+            "G5": "Stage 5: Kidney failure (< 15)"
+        }
+        
+        return jsonify({
+            'stage': prediction,
+            'description': stage_desc.get(prediction, "Unknown Stage")
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/predict_ckd_vision', methods=['POST'])
+def predict_ckd_vision():
+    if not ckd_models_loaded:
+        return jsonify({'error': 'CKD vision model not loaded'}), 503
+    
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+    
+    file = request.files['file']
+    try:
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        image = Image.open(filepath).convert('L').resize((28, 28))
+        input_tensor = transforms.ToTensor()(image).unsqueeze(0)
+        
+        with torch.no_grad():
+            output = ckd_vision_model(input_tensor)
+            _, predicted = torch.max(output, 1)
+        
+        results = ["Normal", "Mild/Moderate CKD", "Severe CKD"]
+        return jsonify({
+            'status': results[predicted.item()],
+            'confidence': "Calculated from image pattern"
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
