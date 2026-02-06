@@ -142,7 +142,7 @@ except Exception as e:
     all_symptoms = []
 # --- CKD Models ---
 ckd_clinical_path = os.path.join(models_dir, "ckd_clinical_model.joblib")
-ckd_vision_path = os.path.join(models_dir, "ckd_vision_model.pth")
+ckd_vision_path = os.path.join(models_dir, "ckd_vision_model_enhanced.pth")
 
 try:
     ckd_model = joblib.load(ckd_clinical_path)
