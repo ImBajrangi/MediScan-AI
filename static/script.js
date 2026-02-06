@@ -189,7 +189,7 @@ ckdClinicalBtn.addEventListener('click', async () => {
         if (res.ok) {
             showResults({
                 condition: data.description,
-                confidence: "98.00", // Based on model training accuracy
+                confidence: data.confidence,
                 is_serious: ["G3a", "G3b", "G4", "G5"].includes(data.stage)
             }, 'CKD Clinical Staging (Random Forest)');
         } else alert(data.error);
@@ -235,7 +235,7 @@ ckdAnalyzeBtn.addEventListener('click', async () => {
         if (res.ok) {
             showResults({
                 condition: "Kidney Status: " + data.status,
-                confidence: "Analysis-driven pattern",
+                confidence: data.confidence,
                 is_serious: data.status !== "Normal"
             }, 'Kidney Ultrasound AI (CNN)');
         } else alert(data.error);

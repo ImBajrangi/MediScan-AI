@@ -283,6 +283,8 @@ def predict_ckd():
         ]], columns=['age', 'gfr', 'albuminuria'])
         
         prediction = ckd_model.predict(features)[0]
+        probabilities = ckd_model.predict_proba(features)[0]
+        confidence = np.max(probabilities)
         
         # Staging descriptions
         stage_desc = {
@@ -296,6 +298,7 @@ def predict_ckd():
         
         return jsonify({
             'stage': prediction,
+            'confidence': f"{confidence * 100:.2f}",
             'description': stage_desc.get(prediction, "Unknown Stage")
         })
     except Exception as e:
@@ -320,12 +323,13 @@ def predict_ckd_vision():
         
         with torch.no_grad():
             output = ckd_vision_model(input_tensor)
-            _, predicted = torch.max(output, 1)
+            probabilities = torch.softmax(output, dim=1)
+            confidence, predicted = torch.max(probabilities, 1)
         
         results = ["Normal", "Mild/Moderate CKD", "Severe CKD"]
         return jsonify({
             'status': results[predicted.item()],
-            'confidence': "Calculated from image pattern"
+            'confidence': f"{confidence.item() * 100:.2f}"
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
