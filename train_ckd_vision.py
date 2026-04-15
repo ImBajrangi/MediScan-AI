@@ -7,7 +7,6 @@ import numpy as np
 import os
 from PIL import Image, ImageDraw, ImageFilter
 
-# 1. Enhanced CNN Architecture for Ultrasound Analysis
 class KidneyUltrasoundCNN(nn.Module):
     def __init__(self, n_classes=3):
         super(KidneyUltrasoundCNN, self).__init__()
@@ -15,12 +14,12 @@ class KidneyUltrasoundCNN(nn.Module):
             nn.Conv2d(1, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(),
-            nn.MaxPool2d(2, 2), # 14x14
+            nn.MaxPool2d(2, 2),
             
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.MaxPool2d(2, 2), # 7x7
+            nn.MaxPool2d(2, 2),
             
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
             nn.BatchNorm2d(128),
@@ -40,7 +39,6 @@ class KidneyUltrasoundCNN(nn.Module):
         x = self.classifier(x)
         return x
 
-# 2. Medical Simulation Pattern Generator (Simulates Ultrasound Textures)
 class MedicalSimulationDataset(Dataset):
     def __init__(self, length=500, transform=None):
         self.length = length
@@ -51,21 +49,19 @@ class MedicalSimulationDataset(Dataset):
         return self.length
     
     def generate_pattern(self, label):
-        # Create a base ultrasound-like texture (grainy grey scale)
         img = np.random.normal(128, 30, (128, 128)).astype(np.uint8)
         pil_img = Image.fromarray(img, mode='L')
         draw = ImageDraw.Draw(pil_img)
         
-        # Add "anatomical" shapes based on label
-        if label == 0: # Normal: Clear, smooth structures
+        if label == 0:
             draw.ellipse([30, 40, 90, 80], outline=200, width=5)
             pil_img = pil_img.filter(ImageFilter.GaussianBlur(radius=1))
-        elif label == 1: # Moderate: Some echogenicity (bright spots)
+        elif label == 1:
             for _ in range(10):
                 x, y = np.random.randint(40, 80, 2)
                 draw.point([x, y], fill=255)
             draw.ellipse([35, 45, 85, 75], outline=150, width=3)
-        else: # Severe: Highly echogenic, irregular borders
+        else:
             for _ in range(50):
                 x, y = np.random.randint(20, 100, 2)
                 draw.point([x, y], fill=255)
@@ -82,7 +78,6 @@ class MedicalSimulationDataset(Dataset):
             img = transforms.ToTensor()(img)
         return img, label
 
-# 3. Fast Training Script
 def train_vision_model():
     print("Initializing ultrasound-pattern CKD vision training (Real-world simulation)...")
     
@@ -100,7 +95,6 @@ def train_vision_model():
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     
-    # Fast training: only 8 epochs for convergence on these patterns
     epochs = 8 
     for epoch in range(epochs):
         model.train()
