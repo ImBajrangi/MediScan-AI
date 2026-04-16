@@ -17,18 +17,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application (excluding models which are LFS pointers)
 COPY . .
 
-# Download actual model files from Hugging Face LFS
-RUN mkdir -p models && \
-    curl -L -o models/best_disease_model_rf.joblib \
-    "https://huggingface.co/spaces/mdark4025/MediScan-AI/resolve/main/models/best_disease_model_rf.joblib?download=true" && \
-    curl -L -o models/label_encoder.joblib \
-    "https://huggingface.co/spaces/mdark4025/MediScan-AI/resolve/main/models/label_encoder.joblib?download=true" && \
-    curl -L -o models/symptoms_list.joblib \
-    "https://huggingface.co/spaces/mdark4025/MediScan-AI/resolve/main/models/symptoms_list.joblib?download=true" && \
-    curl -L -o models/vision_disease_model.pth \
-    "https://huggingface.co/spaces/mdark4025/MediScan-AI/resolve/main/models/vision_disease_model.pth?download=true" && \
-    curl -L -o models/vision_label_map.joblib \
-    "https://huggingface.co/spaces/mdark4025/MediScan-AI/resolve/main/models/vision_label_map.joblib?download=true"
+# Download actual model files from Hugging Face Hub using the downloader script
+RUN python3 hf_downloader.py
 
 # Create uploads directory
 RUN mkdir -p uploads

@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import numpy as np
 from werkzeug.utils import secure_filename
+from huggingface_hub import hf_hub_download
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = './uploads'
@@ -17,6 +18,10 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 models_dir = os.path.join(BASE_DIR, "models")
 datasets_dir = os.path.join(BASE_DIR, "datasets")
+
+# Hugging Face Repository Config
+REPO_ID = "mdark4025/MediScan-AI"
+REPO_TYPE = "space"
 
 class CKDKidneyCNN(nn.Module):
     def __init__(self, n_classes=3):
@@ -78,23 +83,45 @@ def is_lfs_pointer(filepath):
     except:
         return False
 
+def get_model_file(filename):
+    """Safely get or download a model file from Hugging Face Hub"""
+    local_path = os.path.join(models_dir, filename)
+    
+    # Check if file exists and is not an LFS pointer
+    if os.path.exists(local_path) and not is_lfs_pointer(local_path) and os.path.getsize(local_path) > 1000:
+        return local_path
+        
+    print(f"📥 Model {filename} missing or invalid. Downloading from HF...")
+    try:
+        download_path = hf_hub_download(
+            repo_id=REPO_ID,
+            repo_type=REPO_TYPE,
+            filename=f"models/{filename}",
+            local_dir=BASE_DIR,
+            local_dir_use_symlinks=False
+        )
+        return download_path
+    except Exception as e:
+        print(f"❌ Failed to sync {filename}: {e}")
+        return local_path
+
 def check_model_files():
-    """Validate all model files are properly downloaded"""
-    model_files = [
-        model_path, 
-        label_map_path,
-        os.path.join(models_dir, "enhanced_disease_model.joblib"),
-        os.path.join(models_dir, "label_encoder.joblib"),
-        os.path.join(models_dir, "symptoms_list.joblib")
+    """Validate and sync all required model files"""
+    os.makedirs(models_dir, exist_ok=True)
+    
+    assets = [
+        "vision_disease_model.pth", 
+        "vision_label_map.joblib",
+        "enhanced_disease_model.joblib",
+        "label_encoder.joblib",
+        "symptoms_list.joblib",
+        "ckd_clinical_model.joblib",
+        "ckd_vision_model_enhanced.pth",
+        "ckd_hybrid_sota.pth"
     ]
-    for mf in model_files:
-        if not os.path.exists(mf):
-            raise FileNotFoundError(f"Model file not found: {mf}")
-        if is_lfs_pointer(mf):
-            raise ValueError(f"Git LFS file not downloaded properly: {mf}. "
-                           f"Run 'git lfs pull' to download model files.")
-        if os.path.getsize(mf) < 50:
-            raise ValueError(f"Model file too small (likely LFS pointer): {mf}")
+    
+    for asset in assets:
+        get_model_file(asset)
 
 try:
     check_model_files()
