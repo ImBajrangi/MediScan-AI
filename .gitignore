@@ -40,10 +40,10 @@ uploads/
 *.pdf
 
 # Large model files & Binaries (MANAGED OUTSIDE GIT)
-models/
-*.joblib
-*.pth
-*.pkl
+# models/
+# *.joblib
+# *.pth
+# *.pkl
 *.png
 *.jpg
 *.jpeg
