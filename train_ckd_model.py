@@ -44,7 +44,7 @@ def process_real_data(file_path):
     
     return df[['age', 'gfr', 'al_mapped', 'stage']]
 
-print("Processing real UCI CKD dataset...")
+print("Processing UCI CKD dataset...")
 data_path = "datasets/kidney_disease_raw.csv"
 if not os.path.exists(data_path):
     print(f"Error: {data_path} not found.")

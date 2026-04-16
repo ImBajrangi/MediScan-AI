@@ -49,3 +49,6 @@ uploads/
 
 # Logs
 *.log
+
+# Datasets
+datasets/*
