@@ -14,15 +14,11 @@ from sklearn.metrics import (
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.multiclass import OneVsRestClassifier
 
-# ============================================================================
-# CONFIGURATION & AESTHETICS (Sleek Dark Mode / Medical Blue & Green)
-# ============================================================================
 RESULTS_DIR = "./evaluation_results/ckd_research"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-# Set custom styling for research paper aesthetics
 plt.style.use('dark_background')
-sns.set_palette(['#00d2ff', '#50fa7b', '#8be9fd', '#ff79c6', '#bd93f9']) # Medical Blues & Greens
+sns.set_palette(['#00d2ff', '#50fa7b', '#8be9fd', '#ff79c6', '#bd93f9'])
 plt.rcParams.update({
     "figure.facecolor": "#121212",
     "axes.facecolor": "#121212",
@@ -40,25 +36,19 @@ def process_research_data(file_path):
     print(f"🔍 Loading dataset: {file_path}")
     df = pd.read_csv(file_path, index_col=0)
     
-    # Selecting extended feature set
     columns_to_keep = ['age', 'sc', 'al', 'bp', 'su', 'class']
     df = df[columns_to_keep].copy()
-    
-    # Basic cleaning
+
     for col in ['age', 'sc', 'al', 'bp', 'su']:
         df[col] = pd.to_numeric(df[col], errors='coerce')
         df[col] = df[col].fillna(df[col].median())
     
-    # Clinical Logic: GFR Calculation (MDRD formula)
     df['gfr'] = 186 * (df['sc'] ** -1.154) * (df['age'] ** -0.203)
     
-    # Class cleaning
     df['class'] = df['class'].astype(str).str.strip().str.lower()
-    
-    # Mapping to clinical stages (G1 to G5)
+
     def determine_stage(row):
         g = row['gfr']
-        # If not CKD, we still categorize for staging baseline or call it Normal
         if 'notckd' in row['class']:
             return "Normal"
         if g >= 90: return "G1"
@@ -72,34 +62,24 @@ def process_research_data(file_path):
     
     return df[['age', 'gfr', 'al', 'bp', 'su', 'stage']]
 
-# ============================================================================
-# MAIN EXECUTION
-# ============================================================================
 data_path = "datasets/kidney_disease_raw.csv"
 if not os.path.exists(data_path):
     print(f"❌ Error: {data_path} not found.")
     exit(1)
 
-# Preprocessing
 processed_df = process_research_data(data_path)
 X = processed_df[['age', 'gfr', 'al', 'bp', 'su']]
 y = processed_df['stage']
-
-# Encode target classes
 le = LabelEncoder()
 y_encoded = le.fit_transform(y)
 class_names = le.classes_
 n_classes = len(class_names)
-
-# Split data
 X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=42)
 
-# Scaling (Crucial for SVM)
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
-# Model Definitions
 print("🏋️ Training models...")
 
 models = {
@@ -108,7 +88,6 @@ models = {
     "Gradient Boosting": GradientBoostingClassifier(n_estimators=150, learning_rate=0.05, max_depth=6, random_state=42)
 }
 
-# Add Hybrid Ensemble (Voting)
 hybrid_model = VotingClassifier(
     estimators=[
         ('rf', models["Random Forest"]),
@@ -119,13 +98,11 @@ hybrid_model = VotingClassifier(
 )
 models["Hybrid (Ensemble)"] = hybrid_model
 
-# Evaluation storage
 performance_metrics = []
 model_outputs = {}
 
 for name, model in models.items():
     print(f"   ➤ Training {name}...")
-    # SVM and Hybrid with SVM need scaled data
     if "SVM" in name or "Hybrid" in name:
         model.fit(X_train_scaled, y_train)
         y_pred = model.predict(X_test_scaled)
@@ -134,14 +111,12 @@ for name, model in models.items():
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
         y_proba = model.predict_proba(X_test)
-    
-    # Calculate metrics
+
     acc = accuracy_score(y_test, y_pred)
     prec = precision_score(y_test, y_pred, average='macro', zero_division=0)
     rec = recall_score(y_test, y_pred, average='macro', zero_division=0)
     f1 = f1_score(y_test, y_pred, average='macro', zero_division=0)
     
-    # Multiclass AUC
     try:
         auc_score = roc_auc_score(y_test, y_proba, multi_class='ovr', average='macro')
     except:
@@ -162,17 +137,12 @@ for name, model in models.items():
         "y_proba": y_proba
     }
 
-# Save tabular results
 metrics_df = pd.DataFrame(performance_metrics)
 metrics_df.to_csv(os.path.join(RESULTS_DIR, "ckd_research_metrics.csv"), index=False)
 print(f"✅ Metrics saved to {RESULTS_DIR}/ckd_research_metrics.csv")
 
-# ============================================================================
-# VISUALIZATIONS
-# ============================================================================
 print("📊 Generating Visualizations...")
 
-# 1. Comparative Bar Chart
 fig, ax = plt.subplots(figsize=(12, 7))
 tidy = metrics_df.melt(id_vars='Model').rename(columns=str.title)
 sns.barplot(x='Model', y='Value', hue='Variable', data=tidy, ax=ax, palette='viridis')
@@ -183,7 +153,6 @@ plt.tight_layout()
 plt.savefig(os.path.join(RESULTS_DIR, "ckd_comparison_metrics.png"), dpi=200)
 plt.close()
 
-# 2. Confusion Matrices Grid
 fig, axes = plt.subplots(2, 2, figsize=(14, 12))
 axes = axes.flatten()
 for i, (name, output) in enumerate(model_outputs.items()):
@@ -198,7 +167,6 @@ plt.tight_layout()
 plt.savefig(os.path.join(RESULTS_DIR, "ckd_confusion_matrices.png"), dpi=200)
 plt.close()
 
-# 3. ROC-AUC Curves (for the Hybrid model as representative)
 plt.figure(figsize=(10, 8))
 y_test_bin = pd.get_dummies(y_test).values
 y_proba_hybrid = model_outputs["Hybrid (Ensemble)"]["y_proba"]

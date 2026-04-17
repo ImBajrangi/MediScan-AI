@@ -14,9 +14,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from PIL import Image
 
-# ============================================================================
-# CONFIGURATION & GLOBAL STYLING
-# ============================================================================
 RESULTS_DIR = "./evaluation_results/ckd_modern_research"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
@@ -34,9 +31,6 @@ plt.rcParams.update({
 })
 MEDICAL_PALETTE = ['#58a6ff', '#3fb950', '#f85149', '#d29922', '#bc8cff']
 
-# ============================================================================
-# DATASET & PREPROCESSING
-# ============================================================================
 
 class MultiModalCKDDataset(Dataset):
     def __init__(self, tabular_df, image_paths, clinical_labels, vision_labels, transform=None):
@@ -51,7 +45,7 @@ class MultiModalCKDDataset(Dataset):
 
     def __getitem__(self, idx):
         tab = self.tabular_data[idx]
-        img_path = self.image_paths[max(0, idx % len(self.image_paths))] # Repeat images if tabular is larger
+        img_path = self.image_paths[max(0, idx % len(self.image_paths))]
         img = Image.open(img_path).convert('RGB')
         
         if self.transform:
@@ -66,43 +60,34 @@ class MultiModalCKDDataset(Dataset):
 
 def prepare_data():
     print("📊 Preparing SOTA Data Pipeline (25 Clinical Features + CT Images)...")
-    
-    # 1. Tabular Data (Clinical)
+
     data_path = "datasets/kidney_disease_raw.csv"
     df = pd.read_csv(data_path, index_col=0)
-    
-    # Process all clinical features (Handling both numeric and categorical)
+
     for col in df.columns:
         if col == 'class': continue
         
-        # Try to convert to numeric, if fail it stays object
         s_numeric = pd.to_numeric(df[col], errors='coerce')
         
-        if s_numeric.isna().sum() < len(df) * 0.9: # If it's mostly numeric
+        if s_numeric.isna().sum() < len(df) * 0.9:
             df[col] = s_numeric.fillna(s_numeric.median())
         else:
-            # It's categorical
             df[col] = LabelEncoder().fit_transform(df[col].astype(str).str.strip().str.lower())
 
-    # Features and Staging
     X_tab = df.drop(['class'], axis=1)
-    
-    # Label for CKD status
+
     clinical_labels = LabelEncoder().fit_transform(df['class'].astype(str).str.strip().str.lower())
     
     scaler = StandardScaler()
     X_tab_scaled = scaler.fit_transform(X_tab)
     
-    # 2. Vision Data (CT Scans)
     vision_root = "datasets/CKD/CT-KIDNEY-DATASET-Normal-Cyst-Tumor-Stone/CT-KIDNEY-DATASET-Normal-Cyst-Tumor-Stone"
     vision_dataset = ImageFolder(vision_root)
     image_paths = [path for path, label in vision_dataset.imgs]
     vision_labels = vision_dataset.targets
     
-    # Split
     X_train_tab, X_test_tab, y_train_clin, y_test_clin = train_test_split(X_tab_scaled, clinical_labels, test_size=0.2, random_state=42)
     
-    # Transform for ViT
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
@@ -119,10 +104,6 @@ def prepare_data():
     )
     
     return train_dataset, test_dataset, X_tab.shape[1], 4, len(np.unique(clinical_labels))
-
-# ============================================================================
-# MODERN ARCHITECTURES (Full-Scale)
-# ============================================================================
 
 class FTTransformer(nn.Module):
     """Simplified Feature Tokenizer Transformer for Tabular Data"""
@@ -164,15 +145,14 @@ class SwinStyleVision(nn.Module):
         self.head = nn.Linear(embed_dim, 64)
 
     def forward(self, x):
-        x = self.patch_embed(x) # [batch, embed_dim, 14, 14]
-        x = x.flatten(2).transpose(1, 2) # [batch, 196, embed_dim]
+        x = self.patch_embed(x)
+        x = x.flatten(2).transpose(1, 2)
         x = self.transformer(x)
         return self.head(x.mean(dim=1))
 
 class ModernCKDHybrid(nn.Module):
     def __init__(self, n_tab_features, n_clin_classes, n_vis_classes, tab_arch="transformer", vis_arch="vit"):
         super().__init__()
-        # Dynamic Architecture Selection
         if tab_arch == "autoint":
             self.tab_model = AutoInt(n_tab_features)
         else:
@@ -201,10 +181,6 @@ class ModernCKDHybrid(nn.Module):
         fused = F.relu(self.fusion(combined))
         return self.clinical_head(fused), self.vision_head(fused)
 
-# ============================================================================
-# TRAINING & EVALUATION
-# ============================================================================
-
 def train_and_report():
     train_ds, test_ds, n_features, n_vis_classes, n_clin_classes = prepare_data()
     train_loader = DataLoader(train_ds, batch_size=16, shuffle=True)
@@ -212,7 +188,6 @@ def train_and_report():
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    # Comparison Configurations
     configs = [
         {"name": "SOTA Hybrid (FT-Trans + ViT)", "tab": "transformer", "vis": "vit"},
         {"name": "Advanced Hybrid (AutoInt + Swin)", "tab": "autoint", "vis": "swin"}
@@ -245,7 +220,6 @@ def train_and_report():
             
             print(f"Epoch {epoch+1}/{epochs} - Loss: {total_loss/len(train_loader):.4f}")
 
-        # Evaluation
         model.eval()
         all_clin_preds, all_clin_true = [], []
         with torch.no_grad():
@@ -255,7 +229,6 @@ def train_and_report():
                 all_clin_preds.extend(torch.argmax(out_clin, dim=1).cpu().numpy())
                 all_clin_true.extend(batch['clinical_label'].numpy())
 
-        # Metrics
         p = precision_score(all_clin_true, all_clin_preds, average='macro', zero_division=0)
         r = recall_score(all_clin_true, all_clin_preds, average='macro', zero_division=0)
         f1 = f1_score(all_clin_true, all_clin_preds, average='macro', zero_division=0)
@@ -269,17 +242,14 @@ def train_and_report():
             "Accuracy": acc
         })
         
-        # Save best model weight
         if config['name'] == "SOTA Hybrid (FT-Trans + ViT)":
             torch.save(model.state_dict(), os.path.join("./models", "ckd_hybrid_sota.pth"))
             print(f"✅ Best SOTA model weights (FT-Trans + ViT) saved to ./models/ckd_hybrid_sota.pth")
 
-    # Save Comparative Report
     comparison_df = pd.DataFrame(comparison_results)
     comparison_df.to_csv(os.path.join(RESULTS_DIR, "ckd_sota_comparison_report.csv"), index=False)
     print(f"\n📊 Comprehensive Comparison Report saved to {RESULTS_DIR}/ckd_sota_comparison_report.csv")
 
-    # Visualizations
     plt.figure(figsize=(10, 6))
     sns.barplot(x="Model Architecture", y="F1-Score", data=comparison_df, palette="viridis")
     plt.title("SOTA Comparison - CKD Hybrid Architectures")
