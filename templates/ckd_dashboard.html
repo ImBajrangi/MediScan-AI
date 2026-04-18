@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediScan AI | CKD Diagnostic Hub</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    {% if env == 'production' %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='dist/ckd_dashboard.min.css') }}">
+    {% else %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='ckd_dashboard.css') }}">
+    {% endif %}
+    <link rel="shortcut icon" href="https://img.icons8.com/isometric/50/000000/kidneys.png" type="image/x-icon">
+</head>
+<body class="dark-theme">
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <img src="https://img.icons8.com/isometric/50/ffffff/kidneys.png" alt="Logo">
+                <span>MediScan <span>AI</span></span>
+            </div>
+            <div class="nav-links">
+                <a href="/" class="nav-item">Home</a>
+                <a href="#clinical" class="nav-item active">Clinical Hub</a>
+                <a href="#imaging" class="nav-item">Imaging Lab</a>
+            </div>
+            <div class="mobile-menu-btn">
+                <span></span><span></span><span></span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>CKD Precision <span>Diagnostics</span></h1>
+            <p>Advanced multi-modal staging for Chronic Kidney Disease using high-performance CNNs and Residual Biomarker Analysis.</p>
+        </header>
+
+        <section class="grid-layout">
+            <!-- Clinical Module -->
+            <div id="clinical" class="glass-card module-card">
+                <div class="card-header">
+                    <div class="icon-box cyan">
+                        <img src="https://img.icons8.com/fluency-systems-filled/48/4dd0e1/test-results.png" alt="Clinical">
+                    </div>
+                    <h3>Clinical Assessment</h3>
+                </div>
+                <p class="card-desc">Biomarker-driven staging based on GFR and Albuminuria profiles.</p>
+                
+                <form id="clinicalForm" class="form-container">
+                    <div class="input-group">
+                        <label for="age">Patient Age</label>
+                        <input type="number" id="age" placeholder="e.g., 45" required min="1" max="120">
+                    </div>
+                    <div class="input-group">
+                        <label for="gfr">GFR (mL/min/1.73m²)</label>
+                        <input type="number" id="gfr" placeholder="e.g., 75" required step="0.1">
+                    </div>
+                    <div class="input-group">
+                        <label for="albuminuria">Albuminuria (mg/g)</label>
+                        <input type="number" id="albuminuria" placeholder="e.g., 20" required step="1">
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="btnClinical">
+                        <span class="btn-text">Analyze Biomarkers</span>
+                        <div class="loader"></div>
+                    </button>
+                </form>
+
+                <div id="clinicalResult" class="result-box hidden">
+                    <div class="result-header">
+                        <span class="status-badge" id="clinicalStatus">Stage 2</span>
+                        <span class="confidence" id="clinicalConf">98.2% Confidence</span>
+                    </div>
+                    <p class="result-msg" id="clinicalDesc">Normal or mildly decreased function.</p>
+                </div>
+            </div>
+
+            <!-- Imaging Module -->
+            <div id="imaging" class="glass-card module-card">
+                <div class="card-header">
+                    <div class="icon-box emerald">
+                        <img src="https://img.icons8.com/fluency-systems-filled/48/4ade80/ultrasound.png" alt="Imaging">
+                    </div>
+                    <h3>Imaging Analysis</h3>
+                </div>
+                <p class="card-desc">Deep learning analysis of kidney ultrasound and CT scans.</p>
+
+                <div class="upload-container" id="dropZone">
+                    <input type="file" id="fileInput" accept="image/*" hidden>
+                    <div class="upload-placeholder">
+                        <img src="https://img.icons8.com/fluency-systems-regular/48/8b949e/upload-to-cloud.png" alt="Upload">
+                        <p>Drag & drop scan or <span>browse</span></p>
+                        <small>Supports JPG, PNG, DICOM (Converted)</small>
+                    </div>
+                    <div class="preview-container hidden">
+                        <img id="imagePreview" src="" alt="Preview">
+                        <button class="remove-btn">&times;</button>
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-secondary disabled" id="btnVision">
+                    <span class="btn-text">Run Neural Scan</span>
+                    <div class="loader"></div>
+                </button>
+
+                <div id="visionResult" class="result-box hidden">
+                    <div class="result-header">
+                        <span class="status-badge alert" id="visionStatus">Cyst Detected</span>
+                        <span class="confidence" id="visionConf">95.4% Confidence</span>
+                    </div>
+                    <p class="result-msg">Target identified in lower renal pole. Clinical follow-up advised.</p>
+                </div>
+            </div>
+
+            <!-- History / Cache Module -->
+            <div class="glass-card full-width history-card">
+                <div class="card-header">
+                    <div class="icon-box purple">
+                        <img src="https://img.icons8.com/fluency-systems-filled/48/a78bfa/clock--v1.png" alt="History">
+                    </div>
+                    <h3>Recent Diagnostics</h3>
+                </div>
+                <div class="history-list" id="historyList">
+                    <p class="empty-state">No recent records found.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2026 MediScan AI Research Lab. For professional medical consultation only.</p>
+        <p class="version-tag">Build: v{{ version }} [{{ env | capitalize }}]</p>
+    </footer>
+
+    {% if env == 'production' %}
+    <script src="{{ url_for('static', filename='dist/ckd_dashboard.min.js') }}"></script>
+    {% else %}
+    <script src="{{ url_for('static', filename='ckd_dashboard.js') }}"></script>
+    {% endif %}
+</body>
+</html>

@@ -10,7 +10,13 @@ import numpy as np
 from werkzeug.utils import secure_filename
 from huggingface_hub import hf_hub_download
 
+import json
+
 app = Flask(__name__)
+# Load Version Info
+with open('version.json', 'r') as f:
+    PROJ_VERSION = json.load(f)
+
 app.config['UPLOAD_FOLDER'] = './uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -204,6 +210,16 @@ def clean_symptom(s):
 
 @app.route('/')
 def index():
+    return render_template('index.html')
+
+@app.route('/ckd')
+def ckd_dashboard():
+    return render_template('ckd_dashboard.html', 
+                           version=PROJ_VERSION['app_version'],
+                           env=PROJ_VERSION['environment'])
+
+@app.route('/old_home')
+def old_home():
     return render_template('index.html')
 
 @app.route('/predict', methods=['POST'])

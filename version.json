@@ -1,0 +1,9 @@
+{
+    "app_version": "1.0.0",
+    "release_date": "2026-04-17",
+    "models": {
+        "ckd_vision_resnet": "2.1.0",
+        "ckd_clinical_tabular": "1.5.2"
+    },
+    "environment": "development"
+}
