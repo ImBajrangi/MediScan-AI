@@ -10,7 +10,7 @@ import os
 import glob
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.metrics import f1_score, accuracy_score
+from sklearn.metrics import f1_score, accuracy_score, confusion_matrix, classification_report
 import matplotlib.pyplot as plt
 import seaborn as sns
 from PIL import Image
@@ -126,7 +126,48 @@ class MultiModalResNet(nn.Module):
         return self.clinical_head(fused), self.vision_head(fused)
 
 # ============================================================================
-# 📊 DATA & TRAINING
+# 📈 VISUALIZATION & EVALUATION
+# ============================================================================
+def plot_testing_results(history, model, test_loader, device, results_dir):
+    print("📊 Generating Testing Visualizations...")
+    os.makedirs(results_dir, exist_ok=True)
+    
+    # 1. Training Curves
+    plt.figure(figsize=(15, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(history['loss'], label='Total Loss', color='#58a6ff', lw=2)
+    plt.title("Model Convergence (Loss)", fontsize=14, fontweight='bold')
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.grid(alpha=0.2)
+    plt.legend()
+
+    # 2. Confusion Matrix
+    model.eval()
+    all_preds, all_true = [], []
+    with torch.no_grad():
+        for batch in test_loader:
+            tab, img = batch['tabular'].to(device), batch['image'].to(device)
+            out_c, _ = model(tab, img)
+            all_preds.extend(torch.argmax(out_c, dim=1).cpu().numpy())
+            all_true.extend(batch['clinical_label'].numpy())
+            
+    cm = confusion_matrix(all_true, all_preds)
+    plt.subplot(1, 2, 2)
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False)
+    plt.title("CKD Staging: Prediction vs Truth", fontsize=14, fontweight='bold')
+    plt.xlabel("Predicted Stage")
+    plt.ylabel("Actual Stage")
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(results_dir, "testing_performance.png"), dpi=300)
+    plt.show()
+    
+    print("\n📝 Final Classification Report:")
+    print(classification_report(all_true, all_preds))
+
+# ============================================================================
+# ⚡ EXECUTION
 # ============================================================================
 class CKDDataset(Dataset):
     def __init__(self, tab_data, img_paths, clin_labels, vis_labels, tr):
@@ -211,6 +252,7 @@ def run_kaggle_training():
     criterion = nn.CrossEntropyLoss()
 
     print(f"🚀 Starting training on {device} for {epochs} epochs...")
+    history = {'loss': []}
     for epoch in range(epochs):
         model.train()
         total_loss = 0
@@ -226,7 +268,13 @@ def run_kaggle_training():
             scheduler.step()
             total_loss += loss.item()
         
-        print(f"✅ Epoch [{epoch+1}/{epochs}] - Avg Loss: {total_loss/len(train_loader):.4f}")
+        avg_loss = total_loss/len(train_loader)
+        history['loss'].append(avg_loss)
+        print(f"✅ Epoch [{epoch+1}/{epochs}] - Avg Loss: {avg_loss:.4f}")
+
+    # Generate Plots
+    test_loader = DataLoader(CKDDataset(Xte, img_paths, yte, v_labels, transform), batch_size=32, shuffle=False)
+    plot_testing_results(history, model, test_loader, device, "/kaggle/working/results")
 
     save_path = os.path.join(models_dir, "ckd_sota_resnet.pth")
     torch.save(model.state_dict(), save_path)

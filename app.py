@@ -166,19 +166,24 @@ labels_pretty = {
     "vasc": "Vascular Lesions"
 }
 
-symptom_model_path = os.path.join(models_dir, "enhanced_disease_model.joblib")
+symptom_model_path = os.path.join(models_dir, "calibrated_rf_model.joblib")
 symptom_le_path = os.path.join(models_dir, "label_encoder.joblib")
 symptoms_list_path = os.path.join(models_dir, "symptoms_list.joblib")
 precaution_path = os.path.join(datasets_dir, "Disease precaution.csv")
 
 try:
-    symptom_model = joblib.load(symptom_model_path)
+    if os.path.exists(symptom_model_path):
+        symptom_model = joblib.load(symptom_model_path)
+    else:
+        # Fallback to ensemble if RF missing
+        symptom_model = joblib.load(os.path.join(models_dir, "enhanced_disease_model.joblib"))
+        
     symptom_le = joblib.load(symptom_le_path)
     all_symptoms = joblib.load(symptoms_list_path)
     precaution_df = pd.read_csv(precaution_path)
     precaution_df['Disease'] = precaution_df['Disease'].str.strip()
     symptom_model_loaded = True
-    print("✓ Symptom model loaded successfully")
+    print("✓ Symptom model loaded successfully (Stable RF Mode)")
 except Exception as e:
     print(f"⚠ Symptom model failed to load: {e}")
     symptom_model_loaded = False
@@ -379,4 +384,4 @@ def predict_ckd_vision():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
-    app.run(debug=False, host='0.0.0.0', port=port)
+    app.run(debug=False, host='127.0.0.1', port=port)
